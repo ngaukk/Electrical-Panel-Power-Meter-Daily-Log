@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<title>Electrical Panel Power Meter Daily Log</title>
+<style>
+/* Layout: plant-logbook (same system as the IETS log) — status strip, tabs on PC / bottom nav on phone, dashboard with the six meter selector buttons docked at the bottom */
+:root{
+  --bg:#f3f6f5; --panel:#ffffff; --ink:#152320; --muted:#5b6d69; --line:#d6e0dd; --soft:#e8efed;
+  --accent:#0d6e63; --accent-ink:#ffffff; --accent-soft:#d5ebe6;
+  --ok:#1f7a3a; --ok-bg:#dcf1e1; --warn:#9a6300; --warn-bg:#fbedcf; --bad:#b3261e; --bad-bg:#fadcd8;
+  --chart:#0d6e63; --limit:#b3261e; --title:#0b6bcb; --sel:#e01e1e; --on-title:#ffffff;
+  --f-display:Arial,"Helvetica Neue",Helvetica,sans-serif;
+  --f-body:Arial,"Helvetica Neue",Helvetica,sans-serif;
+  --f-data:Arial,"Helvetica Neue",Helvetica,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1614; --panel:#15201e; --ink:#e3ecea; --muted:#93a8a3; --line:#2a3a37; --soft:#1c2a27;
+  --accent:#4cc2b0; --accent-ink:#06201c; --accent-soft:#1d3a35;
+  --ok:#6fd38a; --ok-bg:#163423; --warn:#f0b956; --warn-bg:#3a2d12; --bad:#ff8a80; --bad-bg:#3d1916;
+  --chart:#4cc2b0; --limit:#ff8a80; --title:#4da3ff; --sel:#ff5252; --on-title:#06182b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1614; --panel:#15201e; --ink:#e3ecea; --muted:#93a8a3; --line:#2a3a37; --soft:#1c2a27;
+  --accent:#4cc2b0; --accent-ink:#06201c; --accent-soft:#1d3a35;
+  --ok:#6fd38a; --ok-bg:#163423; --warn:#f0b956; --warn-bg:#3a2d12; --bad:#ff8a80; --bad-bg:#3d1916;
+  --chart:#4cc2b0; --limit:#ff8a80; --title:#4da3ff; --sel:#ff5252; --on-title:#06182b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:18px}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.hstat{margin-left:auto;align-self:flex-start;display:grid;justify-items:end;gap:4px;text-align:right}
+.hrow{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:2px 10px;min-width:0}
+.logo{height:44px;width:auto;flex:none}
+.co{min-width:0;height:44px;display:flex;flex-direction:column;justify-content:center;font-weight:700;color:var(--ink)}
+.c1{font-size:clamp(12px,calc((100vw - 92px)/20.5),17px);line-height:24px}
+.fac{font-size:clamp(9px,calc((100vw - 92px)/27.5),12px);font-weight:600;color:var(--muted);line-height:20px}
+header.top h1{margin:0;font:700 clamp(13px,calc((100vw - 92px)/19),18px)/1.25 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;text-wrap:wrap;color:var(--title);grid-column:2;grid-row:2}
+h2{font:700 18px/1.2 var(--f-display);margin:0}
+.sub{color:var(--muted);font-size:13px}
+.hs-row{display:flex;align-items:center;gap:8px}
+.vm{height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.vm button{appearance:none;font-size:11px;line-height:1;padding:2px 5px;border-radius:8px;border:1px solid var(--line);background:var(--panel);cursor:pointer;opacity:.6}
+.vm button.on{opacity:1;border-color:var(--title);box-shadow:0 0 0 1px var(--title)}
+.net{appearance:none;display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:6px 13px;font:600 13px var(--f-body);cursor:pointer;border:1px solid currentColor;background:var(--panel)}
+.net.on{color:var(--ok);background:var(--ok-bg)} .net.off{color:var(--bad);background:var(--bad-bg)}
+.net.on .dot{box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent)}
+#netBtn{display:none!important}
+#bkHist,#rptDrive{display:none!important}
+.imp-src{grid-template-columns:1fr!important}
+.signpop input{min-height:40px}
+.gate{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 20px;text-align:center;display:grid;gap:10px;justify-items:center}
+.gate b{font-size:17px}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+/* status strip */
+.strip{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:10px}
+.strip-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.verdict{font:700 15px var(--f-display);display:flex;align-items:center;gap:8px}
+.strip-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12.5px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.chip b{font-weight:600;font-variant-numeric:tabular-nums}
+.chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.warn{background:var(--warn-bg);color:var(--warn)} .chip.bad{background:var(--bad-bg);color:var(--bad)}
+.sync{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;color:var(--muted);text-decoration:none;border-radius:999px;padding:4px 10px;background:var(--soft)}
+.sync[href]{cursor:pointer} .sync[href]:hover{text-decoration:underline}
+.sync.ok{color:var(--ok);background:var(--ok-bg)} .sync.warn{color:var(--warn);background:var(--warn-bg)} .sync.busy{color:var(--title)}
+/* tabs */
+nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{appearance:none;border:0;background:none;color:var(--muted);font:600 14px var(--f-body);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* phone mode */
+.bnav{display:none}
+body.vm-mobile .wrap{max-width:560px;gap:14px;padding-block:12px 104px}
+body.vm-mobile nav.tabs,body.vm-mobile .strip{display:none}
+body.vm-mobile input,body.vm-mobile select,body.vm-mobile textarea{font-size:16px;min-height:44px}
+body.vm-mobile .btn{min-height:42px}
+body.vm-mobile .entry-bar .field{flex:1 1 100%}
+body.vm-mobile #saveBtn{width:100%;min-height:50px;font-size:16px}
+body.vm-mobile .bnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--panel);border-top:1px solid var(--line);padding:6px max(4px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(4px,env(safe-area-inset-left,0px));box-shadow:0 -4px 16px rgba(0,0,0,.06)}
+.bnav button{flex:1;appearance:none;border:0;background:none;border-radius:10px;padding:4px 2px;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:600 11px var(--f-body);color:var(--muted);cursor:pointer}
+.bnav button .ic{font-size:20px;line-height:1}
+.bnav button.on{color:var(--title);background:var(--soft)}
+/* dashboard */
+.pd{display:grid;gap:12px}
+.pd-today2{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 10px}
+.pd-today2 .r1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.pd-today2 .d{font:700 22px var(--f-body);color:var(--ink)}
+.pd-today2 .w{font-size:14px;color:var(--muted)}
+.pd-today2 .pill{justify-self:end;font-size:12.5px;padding:4px 9px;border-radius:6px;white-space:normal;text-align:right}
+.sign{appearance:none;justify-self:end;display:inline-flex;align-items:center;gap:8px;border:1.5px solid color-mix(in srgb,var(--title) 60%,var(--line));color:var(--title);background:var(--panel);border-radius:999px;padding:8px 18px;font:600 15px var(--f-body);cursor:pointer;white-space:nowrap}
+.sign:hover{background:var(--soft)}
+.sign.on{color:var(--ink);padding:7px 14px}
+.sign .nm{max-width:120px;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.sign .so{font-size:12px;color:var(--title);border-left:1px solid var(--line);padding-left:8px}
+body.vm-mobile .sign .nm{max-width:80px}
+#todayCard .pd-cta{min-height:50px;font-size:16px}
+.signpop{position:fixed;z-index:31;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:12px;display:grid;gap:8px;width:min(300px,calc(100vw - 20px))}
+.signpop[hidden]{display:none}
+.pd-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;align-content:start;min-width:0}
+.pd-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.pd-h h3{margin:0;font:700 15px var(--f-body);color:var(--ink)}
+.pd-today{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pd-today .d{font:700 20px var(--f-body);color:var(--ink)}
+.pd-today .w{font-size:12.5px;color:var(--muted)}
+.pd-cta{width:100%;min-height:46px;font-size:15px}
+.pd-meter{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pd-meter .tag{display:inline-block;font:700 12px var(--f-data);letter-spacing:.04em;padding:3px 8px;border:1px solid var(--title);color:var(--title);border-radius:5px}
+.pd-meter .nm{font:700 20px/1.2 var(--f-display);margin-top:6px}
+.pd-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+body.vm-mobile .pd-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+.pd-tile{background:var(--bg);border-radius:10px;padding:10px 8px;display:grid;gap:4px;text-align:center;min-width:0}
+.pd-tile .l{font-size:11.5px;color:var(--muted);font-weight:600}
+.pd-tile .v{font:800 22px var(--f-body);color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.1;overflow-wrap:anywhere}
+.pd-tile .u{font-size:11px;color:var(--muted)}
+.pd-row{display:flex;justify-content:space-between;gap:8px;font-size:13.5px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.pd-row:last-child{border-bottom:0}
+.pd-row span:first-child{color:var(--muted)} .pd-row b{font-variant-numeric:tabular-nums}
+.pd-row b.ok{color:var(--ok)} .pd-row b.warn{color:var(--warn)} .pd-row b.bad{color:var(--bad)}
+.mdock-in{display:grid;gap:6px}
+.mdock-l{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.mdock-l span{display:inline-flex;align-items:center;gap:5px}
+.mdock-g{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+body.vm-mobile .mdock-g{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mdock{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+.mbtn{position:relative;appearance:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);cursor:pointer;min-height:64px;min-width:0;font-family:var(--f-body)}
+.mbtn:hover{border-color:var(--title)}
+.mbtn .cd{font:700 14px var(--f-data)}
+.mbtn .nm{font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.mbtn .st{position:absolute;top:9px;right:9px;width:9px;height:9px;border-radius:50%;background:var(--warn)}
+.mbtn .st.done{background:var(--ok)}
+.mbtn[aria-pressed="true"]{background:var(--title);border-color:var(--title);color:var(--on-title)}
+.mbtn[aria-pressed="true"] .nm{color:var(--on-title);opacity:.85}
+.mbtn[aria-pressed="true"] .st{box-shadow:0 0 0 2px var(--on-title)}
+/* entry */
+.entry-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.field{display:grid;gap:4px;min-width:0}
+.field label,.lbl{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px 10px;width:100%;min-width:0}
+input[type=number]{font-variant-numeric:tabular-nums}
+.stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:980px){.stages{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.stages{grid-template-columns:1fr}}
+body.vm-mobile .stages{grid-template-columns:1fr}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:10px;align-content:start;min-width:0}
+.stage-h{display:flex;align-items:baseline;gap:8px;justify-content:space-between}
+.stage-h h2{font-size:17px}
+.stage-h .step{font:700 11px var(--f-data);color:var(--accent);letter-spacing:.06em}
+.prow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
+.prow label{grid-column:1/-1;font-size:13px;font-weight:600;color:var(--ink)}
+.prow label .u{font-weight:400;color:var(--muted);font-size:12px;margin-left:4px}
+.prow input.big{font-size:20px;font-weight:700}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pill{font:600 11px var(--f-data);border-radius:5px;padding:3px 7px;white-space:nowrap;min-width:52px;text-align:center;background:var(--soft);color:var(--muted)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.derived{border-top:1px dashed var(--line);padding-top:8px;display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.derived div{display:flex;justify-content:space-between;gap:8px}
+.derived b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+.derived b.bad{color:var(--bad)}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:600 14px var(--f-body);border-radius:8px;padding:9px 16px;cursor:pointer}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.sm{padding:6px 11px;font-size:13px;min-height:38px}
+.rpt-back{font-weight:700;color:var(--title);border-color:color-mix(in srgb,var(--title) 45%,var(--line))}
+.msg{font-size:13px;color:var(--muted)} .msg.err{color:var(--bad)} .msg.good{color:var(--ok)} .msg.warn{color:var(--warn)}
+.msg a,.sub a{color:var(--title);font-weight:600}
+.note{font-size:12.5px;color:var(--muted);max-width:75ch;margin:0}
+/* history */
+.tbl-wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;font-size:13px;min-width:100%}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:center;vertical-align:middle;white-space:nowrap}
+th{font-size:11.5px;font-weight:600;color:var(--muted);background:var(--soft);position:sticky;top:0}
+td{font-variant-numeric:tabular-nums}
+td.warn{background:var(--warn-bg);color:var(--warn)} td.bad{background:var(--bad-bg);color:var(--bad);font-weight:600}
+td.rem{text-align:left;white-space:normal;min-width:180px;max-width:320px;color:var(--muted);font-size:12px}
+td .gap{font-size:10.5px;color:var(--warn);margin-left:3px}
+th .cd{display:block;color:var(--title);font-weight:700}
+.act{display:inline-flex;gap:6px;align-items:center;justify-content:center;flex-wrap:nowrap}
+.act button{appearance:none;font:600 12px var(--f-body);border-radius:6px;padding:5px 10px;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
+.act .ed{padding:4px 8px;line-height:0;color:var(--title);border-color:color-mix(in srgb,var(--title) 40%,var(--line))}
+.act .del{font-size:13px;padding:5px 9px;line-height:1;color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,var(--line))}
+.act .yes{background:var(--bad);border-color:var(--bad);color:#fff}
+.act button:disabled{opacity:.5;cursor:default}
+.act .q{font:600 12px var(--f-body);color:var(--bad);white-space:nowrap}
+tr.flash td{background:var(--bad-bg)!important}
+.subtabs{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;background:var(--soft);border:1px solid var(--line);border-radius:10px;justify-self:start;max-width:100%}
+.subtabs button{appearance:none;border:0;background:none;color:var(--muted);font:600 13.5px var(--f-body);padding:8px 14px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.subtabs .sd{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--warn);margin-left:6px;vertical-align:middle}.subtabs .sd.done{background:var(--ok)}
+#stages.one{grid-template-columns:minmax(0,520px)}
+body.vm-mobile #stages.one{grid-template-columns:1fr}
+.esheet{position:fixed;z-index:30;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:8px;display:grid;gap:4px;grid-template-columns:1fr 1fr;width:min(440px,calc(100vw - 20px))}
+.esheet[hidden]{display:none}
+body.vm-mobile .esheet{left:max(10px,env(safe-area-inset-left,0px));right:max(10px,env(safe-area-inset-right,0px));width:auto;bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+.esheet .es-h{grid-column:1/-1;font:700 13px var(--f-body);color:var(--muted);padding:4px 6px}
+.esheet button{appearance:none;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:12px 10px;font:600 14px var(--f-body);color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;min-height:52px}
+.esheet button small{display:block;font:700 11px var(--f-data);color:var(--muted);margin-top:2px}
+.esheet button:hover{border-color:var(--title)}
+.esheet button.on{border-color:var(--title);background:var(--panel);box-shadow:0 0 0 1px var(--title)}
+.esheet .sd{width:9px;height:9px;border-radius:50%;background:var(--warn);flex:none}.esheet .sd.done{background:var(--ok)}
+.e-cur{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.subtabs button[aria-selected="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.imp{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.imp-h{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.imp-src{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:12px}
+@media (max-width:700px){.imp-src{grid-template-columns:1fr}}
+body.vm-mobile .imp-src{grid-template-columns:1fr}
+.imp-opt{border:1px dashed var(--line);border-radius:8px;padding:12px;display:grid;gap:8px;align-content:start;min-width:0}
+.imp-row{display:flex;gap:8px;flex-wrap:wrap}.imp-row input{flex:1;min-width:180px}
+input[type=file]{padding:6px}
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:10px;padding:28px 20px;text-align:center;color:var(--muted)}
+.empty b{color:var(--ink);display:block;font-size:15px;margin-bottom:4px}
+details.skip{font-size:12.5px;color:var(--muted)}
+.set-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.mult-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+/* trends */
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+body.vm-mobile .charts{grid-template-columns:1fr}
+@media (max-width:400px){.charts{grid-template-columns:1fr}}
+.dash-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+body.vm-mobile .dash-charts{grid-template-columns:1fr}
+@media (max-width:700px){.dash-charts{grid-template-columns:1fr}}
+.charts.one{grid-template-columns:minmax(0,1fr)}
+.chart .ct{font-size:12px;font-weight:700;color:var(--muted);margin:8px 0 0}
+.ct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.contacts{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px;align-items:start}
+body.vm-mobile .contacts{grid-template-columns:1fr}
+.ct-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:8px;align-content:start}
+.ct-role{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.ct-card h2{font-size:17px}
+.ct-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:14px}
+.ct-row .k{color:var(--muted);width:52px}
+.ct-row .v{font-weight:700;color:var(--ink);user-select:all;overflow-wrap:anywhere}
+.ct-tel{color:var(--title)!important;text-decoration:none;font-size:16px;font-variant-numeric:tabular-nums}
+.ct-tel:hover{text-decoration:underline}
+.ct-copy{padding:4px 10px;font-size:12px;min-height:0}
+.ct-foot{display:flex;gap:6px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.ct-co{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:2px solid var(--line);padding-bottom:8px}
+.ct-person{display:grid;gap:6px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.ct-person:last-child{border-bottom:0;padding-bottom:0}
+.ct-ph{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.ct-nm{font-weight:700;font-size:15px}
+.ct-person .ct-role{margin-top:2px}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 12px 6px;min-width:0}
+.chart-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.chart-h .t{font-weight:700;font-size:13.5px}
+.chart-h .v{font-size:12.5px;color:var(--muted)}
+.chart svg{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font:10px var(--f-data)}
+.chart svg .hit{cursor:pointer}
+.chart-sel{font-size:12px;color:var(--muted);min-height:16px;padding-top:2px}
+.chart-sel b{color:var(--sel)}
+.rpt-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;display:grid;gap:12px;min-width:0}
+.rpt-paper{overflow-x:auto;background:#ffffff;border:1px solid #c9d1d3;border-radius:6px;padding:14px;color:#111111}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="hrow">
+      <img class="logo" src="data:image/gif;base64,R0lGODlhUQBYAPf/AOQcHv////Xo1sC/weQeIdDPxqyrsf7X1/n59dcYFvT//6uZrOG/w7GxtOQhIre0qaevldJJUZSurfvExMvHtscBAPDHtMe1rvh6deUjHfaYpe2Ef+k6QtIAALvLyvqqprWntOz///z56OMRE660qvF6ibGiot0AAKu2yPClnOUIFtZscaSiouVVWOBFPdYUI/n//+Vpael5euiambOzuf3p4eZTZ+uJiN0hJPQCA+AAANcIGPzXy+EdHvvX4uc3OuoAAayys/SWltclFveGhq69nJ2zxK2rq+MKDelGSOITG9gAAPm8ueojJJWcmf3Nz+IFC6qkpPBkXOkTC+YYGeUAAK25u/RmaeksNuxoeuUaHfjr8MLn5fmzrKq7s+sbHKujr66yvvJXWP/+9//x/u3r6P75/9g2OPv///eSjaqbn7S5vekcIfuHk+eajczV36yspOIXFOjdyN4CDN0KDLK4tOajquQdH7YDDNLp6v7z9PlESr67u/YaGvVtdOkTFqetyuyLl5qlktknNZuYotmJhub///c5N+sCCaKjq+VKT7WtxP3//+W0tf/5+exUTss8Qd8YH80GGthZY8b7/u3KxaKq2O84IsW5ldMBDOMfH/X1+usLD8Lr8rmyvfihsOTa2OEABPL+9+pzY9r///EFE90UEMcbGf//++YBBuQMBPRPWfIkIq2c6Ns4KuUeH6OxquoWGuQjLOUnJt4BBOUcHsn28fn++tvLpdWfp9Ln8eEgGu0bFeQcHOQbH6Wm7eEYGeUeGeccHtlfWOwrIuyosfhTTOQFBuIpLdoBBtQMDezz/v79/f/8/+APIOIeLKWvvvb18Lm0sqarpfn6/rW10Pz8//38+6S7veP69eccHL68sZ2zs+AFBvv5+vv//OQdHt4GCOMfHeYgIOYaIf///dkEAN8HAaC8rv7+/+UdHu//8/7+/v/9/+9zccIYAOPv7umzoO/kvfQOIu0kK/IQJtwDBfAiOeQXKdIHAu0wKtsOCZSs6erN188rKf///yH5BAEAAP8ALAAAAABRAFgAQAj/AP8JHEiwoMGDCBMqXMiwYUFm1xBEQ0CxosWLGDNq3BiRmcOD7OA0WOMkWwAXS+hQWQksDrCVVF7CnEmzps2bK7XEOlGhUgAQifhEKeBwWxgSLEI80TFihBIeAawFOFlFEwAAtXZNGQQDhoKpAcyQMWRogjMdfgIoaIZGAYwA7cxI7TrVjCNUASZ0oHLiSgAaBoLAQYCQD7dEF9CRAMHNCYwDS0b8wXFAwSZHXwPQDWDnXgBDY9wKuKY53dQYJ9y5bRbAjbkqG8KaQXPlhI4PMMhMxaKjb4ALhMKAIFGnQRQDIv41qGPCSgAMJ2rdAeAAkSSfCtCwDsAoQIjnFZoA/6uSCZKfD/GI7FHSwVSGXT2aQFnyIkY8Jh9knOqgQpsWcj+44MoeOQBxyAdMaKBIBe6RQ0AwyciCSh5RBEHDcs09pwMA0wHQwxdT5PNOC0wEgEZXWwQgwlMKOOJNAByoAsQ+0QTgyFSHzBDANzfK0AEnJxwgmwIx7MAaaQEQEMoJE4T1TQAtVCEOG8fgMIYuUdRBAw2ewAHNcyfcQQABd4zzBxJLnoBIFSekggR8BFx1VZxa9KKFMK+M48A4UIQSTi8OOECAJj0AoIU6mnR41R09gHPndHdooU0w2mhTyyt3zFKFEszkwYKWBz3gRQMsKPDECSPEKeeqcsZXRQkB8P/QQQwflODHBuu8pUEWJbShwRyXeLXDMeOwaix1J0gRQB1HoNBAcgw94CwLMCyV6rGrxtfBGQEIkEIAj2CggBuVKFAGghZY0MUnPgRgwRJIvILtqg7o0EIAVoCxRgMefTSAJZ48IIEEYLwRwlsiECHLDpwgQosOSIwQhxav9KLJK3HEAsAISADjgC/y2qlFHByHogMtSKjwgxBgLeOBBLBAAEc1XhD20c0456yzQ6CwcMS+R4CRCAtEF2300UgnrfTSLCQCxkhBDG2zQ3x4gpRSTI0ATA1gBaBIFQRoUWgvr2jyBRLd6BCKyVD8UawvDvzRDRRQjGCmyTpAEYsDmiD/UQUQVSChDgE9EFDFKH8dEcQRUyu0jQFImZp1JEI6IspJqahKXRWTaHawZjA0MwYaAfixRAxTvTUDIh0UAtdULQD+ASNmTPWDDmgF0IABBsAxhkEgjKrGd4d00IEOVWiTgS/qNIGDMIicsMT0tkl/PBusJLME7raVwmYVS5wATAb7dCA9LZo0If0JJ1QBxSxa6BD+9G4DcDEd8p/QwQ0BDCBINZ7AkHMwsCEAjIMTyfCJGczwlRpsAAfmOMEfxHGCNHjFDN3JgCR4AANH6MEQNejAKtpSuwDIQBKfCMAYlvGdDkgoAHrwBgz0oAEeoAEVjDgRMTKXgXA8YwwUQgEN/7zgiWl44jlVUMcdXsEeloEFBmjIIRnc8gH9neFGbkFDCL6jGUXggRg5oMMTuoaGtpAuDUuAwj6gooCvUGFJ/WgLDBhhjOg4IB/quIYuWGChf+CiFV4oAgug0QlKUAIGIsBBN+Q1L1Y5IBVzSAMPGGCHFMxAD1NpRCA0YAd5xOMQVUiAJmrRSDmp4w8dYJkhbGGLNwhtDYAAAbQKggkvgKBUp7pWIx0QikOIwAc60EAAYuCG33ziCe2KolqepAcy3GAvisJWvcSALxBY4QH9Wog8RvW0ADChAjpgRQaEwahjESAWQygQ4kogAzSkIQv9SN13fPABZQChCT0g5bzu0P8EVGIhAFxggTSCQIGdDUQAFNjGA6BhiTDU4aEgiIIa1GACExyBBmvwQAEKoItOeLQTXHjDGwZwoShEwQQTjcIRSFAELwDiF4t4AAXkMEuD2vSmOM2pTneaMwQEYRo+I8EReEfUohr1qEhNqlINMA0DHGEaoLiGzq5xhJ8FzSR64MEBtuqDrXr1q2ANq1jHOtapeMIEDQhDIgrqkAKQoAFqsEUAHGAPB1DBHqlQGxCoUCgA+OKv5PAFOQZ7FcEO9rCIPawvauELAJADK7WQjmHJ0YMe9GEJMzAEOkBgHKkyZBtWS8pSTBEHJJSIdCfRgSa0IKc4NGEFT7gRWESQAiX/VGEWJ0CdI27xAUnEw0QwQEUMdHAGrhkiADWIQAd4oT7UAUYwjUuINAARNaWgagSUU8tbXHAOVQkDB7zIwfG+sAo3aEAAN5zKJJbgjgCkIzs1mB7XQlA7AZwAB2W8C4xwlxYSwCIMjFPINQRQgCNYzQlYa0p2FXCLAOAAnOybnrLQ0ODaLIEIAUDFW0yHurYEYAZV0AGGrfGWYWzvAwqQSgBud4K0BHAN03hAAQTAjoGIQBAN8AQLJJAHLgbgBplIlTYQ4Q8LdO3IeokAJjUzFQFMRTSoGiPpLJCKJQgTLNBZQpNMFIAILKEJHXABXt4CAw844QFqlYMAA3CFJajK/xc9YIUqKjCIDXyCCV3owgcCsYIzlKJY1FEHOADwijGpw69/xQqHxlQLdWiBDeMoVA8aSw42vMIBd2DUF3qxi1do4c0EQAIOHJEHCFhozQTk0DjogAQbnigAXZCFMvwhhQ9MYA5TOEESpoIGUmwnBF/5QAemEIofamYMnmujuyqQAxd859VqIYMZtmjCDiiBABmwxw8pZIULMWeA0ZkOAaZAC1jRlwy3CAHpGEGEE/ShBjBAgGb8EQdOSAKT3iDdD1KIgMvZAAicWIJPrJFDIszhLdeY4x8qoOUAUKM7UQrGOKp0pSx5O0MYWIJ0AEAAHWChBINI2xKMl6LvwOASyv9qkQJQMYlJODkEl9PLI9SC7B9HQA4BuMVX0LAEVjCig1MhAPuaZIYnRYkAwqA4lt66JRY0QENXGccIlDEDH3cNFEQohQ6acAdhhGIJyGiBO2QQA390oApfYIMWAnWME7xgFe5whxQ4EIoKxIENBNgFLVIhCw5AAglUQIQLJpEERUwCGakahypkcQ0KaYkCy2HBALypDygAiRbj6FCmSymncSghExwYxiruNZUSKKIFUsBHKO5gFc6vaolIWAInJBOBqYAAFigAwUAYYAISPOD3BiBECA7AFM3NSxOxSIayyhGDCHDNDxGwAQdW0cZR7EGYCJgDLRzgegcswQ8wkMD/NPgAggvwAQKYkENCLuAFA+ASVcY3FhuAkYB8QGUQkyiGEDQQiDTAGwEzIANpcANt4AYnkAVogAG0oAXRdCwOkCz4AgZWEATZpBCYgA0GEAWmcgKRMA5aUAt9ZSya0AcVoHMJkAUBMAxpkQZEUAmVwDVT4QMCwANP8ARJQAdaMGi7dALU5AVwYAX80hCYAGAaKCuc8Ar6hC1asAsOkAOQYAMy4DVR2AZN4gMa8AHF8AkTwA4B0AgVUD+cB2YrkDhWIA0VqBACAA1FEASEUAAq4gY/0AFLYAri8AUMeAfqAIKaQCh38AdV0AFJMAEbMAUiEAAb0AF+cAbDtoeskmmO/0gFSKA/JPIZgJALa2AJbJUz8gACa5AIYcAHJHABUeAEEuABukAKmREAT/AJbeAOV5AESbAHrtAHfbALsfADj7AH4XIDGsAEByBbCkAKb9CJTjANxJF7i4ACmchTA8EMm1AGckABDxAERmAE2EACXmAF2ogCJNCNQdCN2JiNYRAGDGUJlvAAmFAA8rAFnsWM7viO8BiP8jiP9FiP9mhTZTAAfDAA/NiP/viPABmQAjmQ+riPoHCGOgMKx1EH+9IADvmQEBmREjmRFFmRDbAlBkADR/Ap7XgzZeAEDWAFBrAA2EAJW7RFhtBGbXSSLNmSLvmSMMmSChACXCA06HABif+wBt5wM9sgeRt5XFdQCsfTGxEmh+xzlEiZlEq5lExpG8aDBUJiBRKwBu4XDQ5RBnDAB3xkiB2wNwAADFoADI31CoWmDuKwC3uoCeIgDpoADplGloU2JgTASK8ADuCgDnjJPOpQMWe5luDwCk1AHwHwBjl5BNJQDg1BARoZBdYVByshBE/wAV0wAT+wD4d2FWTTA+IwDpoQKIEyDnXJaWe5J+MgDne5CxnwHuJQWZ3pmT1AMWCGOrtDA9MQXQgBWlczWlQABV0QFVPhAqqlT5ogDKWwBPkQBz1Af73wAsmAeQTQC0rgDC+QAFqXD/NQD/jAHucABECAA6eAAzlQBcD/wAYPiDga2Tu/Ey2hhTWm0BRNglrA2Xrztw/KcmRvoQAi8AzJUAVR6B0B0C5qcVwBkAKF+HNgcQZf5hvPNRiJeRTvp2BC8happSrkgAOcoAKxkgRAMCsiEAK6EQCQsASIUw6o8CTpMAbfMAZjgBddYw3M0EH0QAcKGhi12RBwEAZsmGDYJSTSBiOp0Hp3kAAk6AIA+nNoYAZjYBpZoAOooxYfVgEVUAxOGgAroD8+sR23kzt1wDsM+lmQg0s6QDLZxQzf4QJV0ASB0gRToAwmMhZo4AbOUCI4xGanw2sfBgQnwD8YFABSsARV8AHqZjv8FQC8841WiRBy8ABgcASL/1ANcBAFhvAEVdAU5MA1qDBtKWBeaZAGTxABKOhhJdABQAAKKrRhHdBeqPAdKUALsAEDZvAWMVAFVdCbLJql7dUA+iKSVbUNs4QLiQANAzANUdAAi7AAeRAAhbAEVBALmaAj2cGFZtAO1mANClAMFQCDJdQdKXYaHaAsjGAIjOAasKEWeCEG4YNi1PAVP4AqCYBs3GAEa8AC+lIH0PAA13AB3LAGYAAGb/EBN+AGSaAm3HcHvJAMmTAMN3ADG5CwN1ACbvAIiFABOHADaZACKRAD39ewM4ABX1ABCTAK/9oCnBAKijADG7ABM/ADoTACj3ADMrAB7oADI8AGX3ACCf/gB2kgAyUSUGEQUw3gBUfADSZkd8TQBBnwCnDzBfIDBOdAB1AAOBCDDE2ApoXyCrPQC1TQC7PgALPQtbOgCQRQC2zQBF0rLwTgAGTbtdxnQF47C3fwWIaiJxlADEuQAAAlCFyCajrgC9MhDvSQEsUEOkf2LsKAtkgABQ/TPm6iDR8TKT0wDrHACWxiPcfwBXy4m/lgD0CQAKbAOu0TDrtABX6lCeMwBwQARBVycQO0IZlWC0vQn9ZgCDckApczFThgCjsBCTCYklMxBlkwhxnQC0DgDEZmp1NhB3MgI9zCZSugI5vBBKGwDw4yDtqGumGgulBXJqFADutAX1MRCAz/J6vT0wNQgAMigAZkMEVd4RXpigarIF6kSg3UIKEwEAJ6QA0DugRY4AgwIAohMAY/BwPf4A2bAAPpcLgEMA7hEAnWi73QsXGzoAPUVL+bgFoKUAkckArHYA5jpHKHeAI/UBfekQmBEADRsA7edDwqgGyiQDpJ8AcKwAiOUEaHcAI54AMKYAblwAgRRyVWgiVagmrhFnWZkAktUAPfaiOb4BYKIANAEA0tshv7YB3wkHMr9whSegumMVxxMKto0A5qkQaZYCIv4mDS0yTWYHRS4sMVF8Tflr1XMQt/wJ3haTxO9Bao4ALfIm8B8AF/mHJfgQpLwDLMQDoHYDz+8CT4/xsAWMAGL1LGkYA7aNxgUaIJbAzENGAhw4pEDAgAmtKkTDADM5AG7+m/YwAFFSBvUNQd3LHIICpeDKAZCJCKZrAJ37ECHaAPU7HIbIA8JVJCjxAmDqAKDnAlnxKSRUQDYCIvpXsKhahd7UAG6ToVlfACiMALHfACXZAiYBENH3AGVUAFQ8ALS1ABQlAGjOAWUSEALXACnDAOOgAJoJAiMOALtNABY7Qde3ACCWwOBDAhFhcEXRIGJqQDGycMKkAHOBB6G5AGKzAJe/ACzKYNVrFEHLM97BMOdgO2gpLAcXAMeSU9geMxV2E2nJBX3aANr/AFdOCnOjAHCZABpKsKo//meFvSAE0FA0wQPk0BDIhiaGHZaIWWhKwCDnMpN6y6BPrgAvrAPSeABJdSStHEKHwbNhHDCRXAAYPJAt0mAvpSBInghv9ZA10QCzqAKa7XeUuQDCnQwlNBO2TWHQJQw3/gAERdSuOABB0wAzUgAFyjALDAAl4QBLggEBfQCmHQALDgBAtACOgQAhOgA9fWfUASTzm8CVuACmU0FWSwDGbQDG+RBFWQea7HBkvgAgGgC4TgBEQTBF5QDa0gDwUhAv/iCUGADgsAAzwAf5ynCX+AB8hmAyuwDm5xAJXwBBYAFQEAD/LwArEsAzpABQ3ogDzICMwhDWGAAtxQAIeKEA//gIEPGn/GMg5UUAECYAiBwDII0L+FyBq1S9wikAljtAc6MN3G8oDKYgVR4CwOUUu3tIG6hC2ktAtDEANZAATmkAw6AAQ5UAHGIATuYA4Mx53vcAkcUALDkA+xYN/0woMBoK/XVGMMUUuLkAgALt6s8gpzgAxTsQRtwAg2QAQKkAJikAYxcMclkAXuQAQp0AJzoA2c94DUtAaciE0NAQHciEtziOLZAma/dQOoMwxRGAjtsgW5IASBYAfFYAcMQDqXsASAtks6MHNeEAVAiJChggJBQC2S+gdMvirjEAe0cAB6kAIwIAYYwAhtUCIHUAJYLgQYMAPd4QInQE5B7htW/3AE1yviC7ENNPAALHCs/rAEs4ADhHUswtADf0AMqtABHxAANgArblAGaFAGE+ADPhDLAVAGFXCmricLsVAB32IAJqAlaH4QRWAE1aAGHuBNmZADOTAEQ8AGwmAs4BATbBAJ+WAMEdAIeaEDrlMJnRMAeFAFOTAOYbtP4/AF5YzaCiAID1ANgCAAN4ML/IAN22ACnrAJU1EDfuAMFZAP+zAF2AUAwdsL2jA452QPKoADcfADzwAMqpAM4fAFDtADSrREmqAOMYEExwA+g/AB5TAVbxAFRZDri7AzuGAAtsQHUrljBpMZE0AEwwAJsqAC7dMbKh8OUEAHrLY2eCM/k6fqABzQApL0ZPAwABIVY3WAAtUAArapiZiwCJn8jQ9AKoTAArBgBR6QBylJbWBRDnqgBx4EFowQwKRACnngAbi62hDwANvgBdBgBIAgDbhQBvAYDaCAC1UTBoCADSiwBuMYBCAABgtw9wsgUROlBiwQBftqUXBw9NJQB1aAAi8FCNuACzR1jwghAnJQAAMgDb/3e4SPAigQBlZQB5L/e3ygjvJQUzcVEAA7" alt="Lam Soon">
+      <div class="co"><div class="c1">LAM SOON EDIBLE OILS SDN.BHD.</div><div class="fac">(TELOK PANGLIMA GARANG FACTORY)</div></div>
+      <h1>Electrical Panel Power Meter Daily Log</h1>
+    </div>
+    <div class="hstat">
+      <div class="hs-row">
+        <button type="button" class="net off" id="netBtn" aria-live="polite"><span class="dot"></span><span id="netTxt">Offline</span></button>
+        <div class="vm" role="group" aria-label="View mode"><button type="button" id="vmM" title="Mobile view" aria-label="Mobile view">📱</button><button type="button" id="vmP" title="PC view" aria-label="PC view">🖥️</button></div>
+      </div>
+      <div class="sub" id="connState"></div>
+    </div>
+  </header>
+
+  <section class="strip" aria-label="Today's readings">
+    <div class="strip-head">
+      <div class="verdict" id="verdict"><span class="dot"></span><span>Loading readings…</span></div>
+      <div class="sub" id="stripDate"></div>
+    </div>
+    <div class="strip-row"><div class="chips" id="stripChips"></div></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="dash">Dashboard</button>
+    <button role="tab" aria-selected="false" data-tab="entry" aria-haspopup="menu" aria-expanded="false">Daily entry ▾</button>
+    <button role="tab" aria-selected="false" data-tab="history">History</button>
+    <button role="tab" aria-selected="false" data-tab="trends" aria-haspopup="menu" aria-expanded="false">Trends ▾</button>
+    <button role="tab" aria-selected="false" data-tab="contact">Contact</button>
+  </nav>
+
+  <nav class="bnav" id="bnav" aria-label="Sections">
+    <button type="button" data-go="dash"><span class="ic">📊</span>Dashboard</button>
+    <button type="button" data-go="entry" aria-haspopup="menu" aria-expanded="false"><span class="ic">➕</span>Entry ▾</button>
+    <button type="button" data-go="history"><span class="ic">📋</span>History</button>
+    <button type="button" data-go="trends" aria-haspopup="menu" aria-expanded="false"><span class="ic">📈</span>Trends ▾</button>
+    <button type="button" data-go="contact"><span class="ic">📞</span>Contact</button>
+  </nav>
+
+  <div class="esheet" id="entrySheet" hidden role="menu" aria-label="Choose a meter to enter"></div>
+  <div class="esheet" id="trendSheet" hidden role="menu" aria-label="Choose a meter for trends"></div>
+  <form class="signpop" id="signPop" hidden role="dialog" aria-label="Sign in">
+    <div class="field"><label for="signName">Your work email</label><input type="email" id="signName" autocomplete="email" placeholder="name@gmail.com"><div class="sub">We email you a sign-in link. Open it on this device.</div></div>
+    <div class="actions"><button type="submit" class="btn primary sm" id="signGo">Send sign-in link</button><button type="button" class="btn sm" id="signCancel">Cancel</button><span class="msg" id="signMsg"></span></div>
+  </form>
+
+  <!-- DASHBOARD -->
+  <section id="pane-dash" role="tabpanel" class="pd">
+    <div class="pd-card" id="todayCard"></div>
+    <div class="mdock" id="mdock">
+      <div class="mdock-in">
+        <div class="mdock-l"><span>Select a power meter</span><span><span class="dot" style="color:var(--ok)"></span>Recorded today <span class="dot" style="color:var(--warn);margin-left:8px"></span>Pending</span></div>
+        <div class="mdock-g" id="mdockG"></div>
+      </div>
+    </div>
+    <div class="pd-card" id="meterCard"></div>
+    <div class="dash-charts" id="dashChart"></div>
+  </section>
+
+  <!-- ENTRY -->
+  <section id="pane-entry" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div class="entry-bar">
+      <div class="field"><label for="f_date">Reading date</label><input type="date" id="f_date"></div>
+      <div class="field"><label for="f_time">Reading time (actual time)</label><input type="time" id="f_time" readonly title="Set automatically from the actual time when you save" style="background:var(--soft)"></div>
+      <div class="field" style="flex:1;min-width:180px"><label for="f_by">Recorded by</label><select id="f_by"><option value="">Select name</option></select></div>
+      <div class="msg" id="loadedNote"></div>
+    </div>
+    <div class="actions"><span class="e-cur" id="eCur"></span><button class="btn sm" type="button" id="eSwitch" aria-haspopup="menu" aria-expanded="false">Change meter ▾</button></div>
+    <div class="stages" id="stages"></div>
+    <div class="actions">
+      <button class="btn primary" id="saveBtn" type="button">Save readings</button>
+      <button class="btn" id="clearBtn" type="button">Clear form</button>
+      <button class="btn rpt-back" id="entryBack" type="button">← Back</button>
+      <span class="msg" id="saveMsg"></span>
+    </div>
+    <p class="note">Enter the kWh register exactly as shown on each panel meter. Usage is worked out from the previous reading × the CT/PT multiplier (set per meter in the Supabase "meters" table). Leave a meter blank if it wasn't read today.</p>
+  </section>
+
+  <!-- HISTORY -->
+  <section id="pane-history" role="tabpanel" hidden style="display:grid;gap:12px">
+    <div class="actions" style="align-items:flex-end">
+      <div class="field"><label for="h_month">Month</label><select id="h_month"></select></div>
+      <button class="btn sm" id="csvBtn" type="button">Export CSV</button>
+      <button class="btn sm" id="impBtn" type="button" aria-expanded="false" aria-controls="impPanel">Import CSV</button>
+      <button class="btn sm" id="bkHist" type="button" title="Create a fresh backup copy in Google Drive">Back up</button>
+      <button class="btn sm primary" id="rptBtn" type="button" aria-expanded="false" aria-controls="rptPanel">Generate Report</button>
+      <button class="btn sm rpt-back" id="histBack" type="button">← Back</button>
+      <span class="msg" id="csvMsg"></span>
+    </div>
+    <div class="rpt-wrap" id="rptPanel" hidden>
+      <div><button type="button" class="btn sm rpt-back" id="rptBack">← Back</button></div>
+      <div class="imp-h"><h2>Generate Report</h2><span class="sub">Monthly report in the plant's paper-form layout, for the month selected above.</span></div>
+      <div class="actions" style="align-items:flex-end">
+        <div class="field"><label for="rptType">Report</label><select id="rptType"><option value="read">Power meter daily reading (kWh register)</option><option value="use">Daily electricity consumption (kWh)</option></select></div>
+        <button class="btn sm" id="rptDl" type="button">Download PDF</button>
+        <button class="btn sm" id="rptDrive" type="button">Save PDF to Google Drive</button>
+        <span class="msg" id="rptMsg"></span>
+      </div>
+      <div class="rpt-paper" id="rptPaper"></div>
+    </div>
+    <div class="imp" id="impPanel" hidden>
+      <div class="imp-h"><h2>Import CSV</h2><span class="sub">Columns are matched by header. Either one column per meter (LV1885, LV201357, SB-UT, COM, PUMP, SB-SM — or their names), as in Export CSV, or one row per reading with Meter, Date and Register kWh columns. Dates as dd-mm-yyyy, dd/mm/yyyy or yyyy-mm-dd.</span></div>
+      <div class="imp-src">
+        <div class="imp-opt">
+          <div class="lbl">From this device</div>
+          <input type="file" id="impFile" accept=".csv,text/csv,text/plain">
+        </div>
+        <div class="imp-opt" hidden>
+          <div class="lbl">From cloud storage link (Google Drive)</div>
+          <div class="imp-row"><input type="url" id="impUrl" placeholder="Paste a Google Drive CSV or Google Sheet link"><button class="btn sm" id="impLoad" type="button">Load from link</button></div>
+          <div class="sub">Works with a .csv file or a Google Sheet (first tab) you can open in Google Drive. Uses your Google Drive / Google Sheets connector in Claude.</div>
+        </div>
+      </div>
+      <div class="msg" id="impMsg"></div>
+      <div id="impPreview" hidden style="display:grid;gap:10px">
+        <div class="chips" id="impChips"></div>
+        <div id="impSkip"></div>
+        <div class="actions">
+          <button class="btn primary sm" id="impNew" type="button">Add new readings</button>
+          <button class="btn sm" id="impAll" type="button">Import and overwrite existing</button>
+          <button class="btn sm" id="impCancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div class="subtabs" role="tablist" aria-label="History view">
+      <button type="button" role="tab" data-sub="read" aria-selected="true">Meter readings (kWh register)</button>
+      <button type="button" role="tab" data-sub="use" aria-selected="false">Daily usage (kWh)</button>
+    </div>
+    <div id="histBody"></div>
+    <p class="note">The pencil opens that day in Daily entry to edit. ✕ deletes all meter readings for that day. Amber cells carry a note (hover or see Remarks); red usage means the register went down.</p>
+  </section>
+
+  <!-- TRENDS -->
+  <section id="pane-trends" role="tabpanel" hidden style="display:grid;gap:12px">
+    <div class="actions">
+      <div class="field"><label for="t_range">Period</label>
+        <select id="t_range"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option><option value="custom">User define period</option></select></div>
+      <div class="field" id="t_fromF" hidden><label for="t_from">From (dd/mm/yyyy)</label><input type="text" id="t_from" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" style="width:140px"></div>
+      <div class="field" id="t_toF" hidden><label for="t_to">To (dd/mm/yyyy)</label><input type="text" id="t_to" inputmode="numeric" placeholder="dd/mm/yyyy" maxlength="10" style="width:140px"></div>
+      <div class="field" style="align-self:flex-end"><span class="e-cur" id="tCur"></span></div>
+      <button class="btn sm" id="tSwitch" type="button" aria-haspopup="menu" aria-expanded="false" style="align-self:flex-end">Change meter ▾</button>
+      <button class="btn sm primary" id="trPdf" type="button" style="align-self:flex-end">Create PDF</button>
+      <button class="btn sm rpt-back" id="trendsBack" type="button" style="align-self:flex-end">← Back</button>
+      <span class="msg" id="trMsg" style="align-self:center"></span>
+    </div>
+    <div class="rpt-wrap" id="trPrev" hidden>
+      <div><button type="button" class="btn sm rpt-back" id="trBack">← Back</button></div>
+      <div class="rpt-paper" id="trPrevBody" style="display:grid;gap:14px;justify-items:center"></div>
+    </div>
+    <div id="trendBody"></div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="pane-contact" role="tabpanel" hidden style="display:grid;gap:12px">
+    <div class="actions"><button class="btn primary sm" id="ctAdd" type="button">Add contact</button><button class="btn sm rpt-back" id="contactBack" type="button">← Back</button><span class="msg" id="ctMsg"></span></div>
+    <form class="imp" id="ctForm" hidden novalidate>
+      <div class="imp-h"><h2 id="ctFormTitle">Add contact</h2><span class="sub">Shared with everyone who uses this log.</span></div>
+      <div class="ct-grid">
+        <div class="field"><label for="ct_role">Service / role</label><input type="text" id="ct_role" placeholder="e.g. Electrical contractor, TNB, Meter calibration"></div>
+        <div class="field"><label for="ct_co">Company</label><input type="text" id="ct_co" placeholder="Company name"></div>
+        <div class="field"><label for="ct_name">Contact person</label><input type="text" id="ct_name" placeholder="Name"></div>
+        <div class="field"><label for="ct_phone">Phone</label><input type="tel" id="ct_phone" placeholder="e.g. 012-3456789"></div>
+        <div class="field"><label for="ct_email">Email</label><input type="email" id="ct_email" placeholder="Optional"></div>
+        <div class="field"><label for="ct_note">Note</label><input type="text" id="ct_note" placeholder="Optional — e.g. 24-hour breakdown line"></div>
+      </div>
+      <div class="actions"><button class="btn primary sm" type="submit">Save contact</button><button class="btn sm" id="ctCancel" type="button">Cancel</button><span class="msg" id="ctFormMsg"></span></div>
+    </form>
+    <div class="contacts" id="ctBody"></div>
+  </section>
+
+  <!-- SYSTEM SETTINGS (no longer shown in the menu) -->
+  <section id="pane-settings" role="tabpanel" hidden style="display:grid;gap:12px">
+    <div class="imp">
+      <div class="imp-h"><h2>Google Sheet Sync</h2><span class="sub">Keeps a copy of every reading (all months, all six meters) in a Google Sheet.</span></div>
+      <div class="set-status"><span class="lbl">Status</span><a class="sync" id="syncStat" target="_blank" rel="noopener"><span class="dot"></span><span id="syncTxt">Google Sheet not synced</span></a><button class="btn sm" id="syncNow" type="button">Sync now</button><span class="msg" id="syncMsg"></span></div>
+      <div class="imp-opt">
+        <div class="lbl">Google Sheet link (sync target)</div>
+        <input type="url" id="bkSheet" placeholder="Paste the Google Sheet link the log syncs into">
+        <div class="sub" id="bkSheetLink"></div>
+        <div class="sub">Every reading is written into the first tab of this Google Sheet, replacing what was there, so the sheet always matches the log. Each person who saves readings needs the Google Sheets connector in Claude and edit access to this sheet. Leave blank to keep a CSV copy in Google Drive instead.</div>
+        <div class="lbl" style="margin-top:6px">Google Drive folder link (for backup copies and saved PDFs)</div>
+        <input type="url" id="bkFolder" placeholder="Paste a Drive folder link, or leave blank for My Drive">
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink);font-weight:600;margin-top:4px"><input type="checkbox" id="bkAuto" style="width:auto;min-height:0;margin-top:2px" checked> <span>Sync automatically whenever new data is input</span></label>
+      </div>
+      <div class="sub" id="bkAutoLast"></div>
+    </div>
+    <div class="imp">
+      <div class="imp-h"><h2>Backup copy</h2><span class="sub">Saves a separate file named with today's date and time. It is never replaced, so use it before big changes or at month end. Restore with History → Import CSV → From cloud storage link.</span></div>
+      <div class="actions"><button class="btn primary sm" id="bkGo" type="button">Create backup copy</button><span class="msg" id="bkMsg"></span></div>
+      <div class="sub" id="bkLast"></div>
+    </div>
+    <div class="imp">
+      <div class="imp-h"><h2>Meter settings</h2><span class="sub">CT/PT multiplier for each meter. Usage = (today's register − previous register) × multiplier. Leave at 1 if the meter already shows actual kWh.</span></div>
+      <div class="mult-grid" id="multGrid"></div>
+      <div class="actions"><button class="btn primary sm" id="multSave" type="button">Save multipliers</button><span class="msg" id="multMsg"></span></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+"use strict";
+const METERS=[
+  {id:"LV1885",name:"Transformer 1"},
+  {id:"LV201357",name:"Transformer 2"},
+  {id:"SB-UT",name:"Utility"},
+  {id:"COM",name:"Compressor"},
+  {id:"PUMP",name:"Chiller Pump"},
+  {id:"SB-SM",name:"Soap Main"}
+];
+const MID=METERS.map(m=>m.id);
+let STAFF=[];   // loaded from the Supabase "staff" table after sign-in
+const emailOf=n=>(STAFF.find(x=>x.name===n)||{}).email||null;
+const TITLE="Electrical Panel Power Meter Daily Log";
+const CO_NAME="LAM SOON EDIBLE OILS SDN BHD (CO.NO.14578-T)";
+const $=s=>document.querySelector(s);
+const el=(t,a={},...c)=>{const e=document.createElement(t);for(const[k,v]of Object.entries(a)){if(k==="class")e.className=v;else if(k==="text")e.textContent=v;else e.setAttribute(k,v)}c.forEach(x=>x!=null&&e.append(x));return e};
+const pad=n=>String(n).padStart(2,"0");
+const isoOf=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const isoToday=()=>isoOf(new Date());
+const nowOf=iso=>{const d=new Date(iso);return isNaN(d)?"":pad(d.getHours())+":"+pad(d.getMinutes())};
+const nowHM=()=>{const d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())};
+const dmy=iso=>iso?iso.slice(8,10)+"-"+iso.slice(5,7)+"-"+iso.slice(0,4):"";
+const dayName=iso=>new Date(iso+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short"});
+const monthName=ym=>{const[y,m]=ym.split("-");return new Date(+y,+m-1,1).toLocaleString("en-GB",{month:"long",year:"numeric"})};
+const daysBetween=(a,b)=>{const p=s=>{const[y,m,d]=s.split("-").map(Number);return Date.UTC(y,m-1,d)};return Math.round((p(b)-p(a))/864e5)};
+const nf=(v,dp)=>v==null||!isFinite(v)?"—":Number(v).toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const fReg=v=>v==null?"—":Number(v).toLocaleString("en-GB",{maximumFractionDigits:2});
+const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mName=id=>(METERS.find(m=>m.id===id)||{}).name||id;
+const GENERIC_NOTE="Imported from paper log sheet";
+const realNote=r=>r&&r.remarks&&r.remarks!==GENERIC_NOTE?r.remarks:"";
+const ls={get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+
+let db=null,user=null,downloads=null,mcp=null,canWrite=true,dbOk=false,netDetail=false;
+const RAW={};MID.forEach(id=>RAW[id]=[]);   // meter -> readings asc
+const loadedM=new Set();
+let BYDATE=new Map();                        // date -> {meter: reading}
+let MULT={};
+let bkCfg=null,autoInfo=null,lastBackup=null,autoBusy=false,syncFail=false;
+let sel=MID.includes(ls.get("pm_sel"))?ls.get("pm_sel"):MID[0];
+let dirty=false;
+
+/* ---------- derived data ---------- */
+const mult=id=>{const v=Number(MULT[id]);return v>0?v:1};
+function series(id){const a=RAW[id],m=mult(id);return a.map((r,i)=>{const p=a[i-1];if(!p)return{...r,used:null,gap:0,perDay:null};const g=Math.max(1,daysBetween(p.date,r.date));const u=(r.kwh-p.kwh)*m;return{...r,used:u,gap:g,perDay:u/g,prev:p}})}
+function rebuild(){BYDATE=new Map();MID.forEach(id=>RAW[id].forEach(r=>{if(!BYDATE.has(r.date))BYDATE.set(r.date,{});BYDATE.get(r.date)[id]=r}))}
+function prevReading(id,date){let best=null;for(const r of RAW[id]){if(r.date<date)best=r;else break}return best}
+const recordedToday=()=>{const t=BYDATE.get(isoToday())||{};return MID.filter(id=>t[id])};
+
+/* ---------- online pill ---------- */
+function updateNet(){
+  const on=navigator.onLine!==false&&dbOk;const b=$("#netBtn");
+  b.className="net "+(on?"on":"off");$("#netTxt").textContent=on?"Online":"Offline";
+  b.title=on?"Connected to the shared log. Readings save for everyone.":(navigator.onLine===false?"No internet connection on this device.":"Not connected to the shared log. Readings can't be saved right now.");
+  const b2=$("#netBtn2");if(b2){b2.className=b.className;b2.lastChild.textContent=$("#netTxt").textContent;b2.title=b.title}
+  if(netDetail)$("#connState").textContent=b.title;
+}
+
+/* ---------- status strip ---------- */
+function renderStrip(){
+  const done=recordedToday();const v=$("#verdict");v.textContent="";
+  const st=done.length===6?"ok":done.length?"warn":"bad";
+  v.append(el("span",{class:"dot",style:"color:var(--"+st+")"}),el("span",{text:done.length===6?"All 6 meters recorded for today":done.length+" of 6 meters recorded today"+(done.length?"":" — add today's readings")}));
+  $("#stripDate").textContent=dmy(isoToday())+" · "+new Date().toLocaleDateString("en-GB",{weekday:"long"});
+  const chips=$("#stripChips");chips.textContent="";
+  METERS.forEach(m=>{const a=RAW[m.id],last=a[a.length-1];const ok=done.includes(m.id);
+    chips.append(el("span",{class:"chip "+(ok?"ok":"warn")},el("span",{class:"dot"}),m.name+" ",el("b",{text:ok?"recorded":last?"last "+dmy(last.date):"no readings"})))});
+}
+
+/* ---------- chart (shared by dashboard and trends) ---------- */
+const NS="http://www.w3.org/2000/svg";
+function chartSvg(pts,start,end,unit,opt){
+  opt=opt||{};const bar=opt.type==="bar";const W=opt.W||320,H=opt.H||130,ml=bar?44:56,mr=8,mt=10,mb=20;
+  const svg=document.createElementNS(NS,"svg");svg.setAttribute("viewBox","0 0 "+W+" "+H);svg.setAttribute("role","img");svg.setAttribute("aria-label",opt.label||"Trend chart");
+  const mk=(t,a)=>{const e=document.createElementNS(NS,t);for(const[k,v]of Object.entries(a))e.setAttribute(k,v);svg.append(e);return e};
+  const sel=el("div",{class:"chart-sel",text:pts.length?"Tap a "+(bar?"bar":"point")+" to see its value":"No readings in this period"});
+  if(!pts.length){const t=mk("text",{x:W/2,y:H/2,"text-anchor":"middle"});t.textContent=bar?"Needs two readings in the period":"No readings in this period";return[svg,sel]}
+  const vs=pts.map(q=>q.v);let lo,hi;
+  if(bar){lo=Math.min(0,...vs);hi=Math.max(0,...vs);if(hi===lo)hi=lo+1;hi+=(hi-lo)*0.08}
+  else{lo=Math.min(...vs);hi=Math.max(...vs);if(hi===lo){hi+=1;lo-=1}const pv=(hi-lo)*0.08;hi+=pv;lo-=pv}
+  const DAY=864e5,s0=start.getTime()-DAY/2,span=(end.getTime()+DAY/2)-s0,pw=W-ml-mr,dw=pw*DAY/span;
+  const x=d=>ml+((new Date(d+"T00:00:00").getTime()-s0)/span)*pw,y=v=>mt+(1-(v-lo)/(hi-lo))*(H-mt-mb);
+  const tick=v=>Math.abs(hi-lo)<10?v.toFixed(1):Math.round(v).toLocaleString("en-GB");
+  for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,yy=y(v);mk("line",{x1:ml,x2:W-mr,y1:yy,y2:yy,stroke:"var(--line)","stroke-width":"1"});const tx=mk("text",{x:ml-5,y:yy+3,"text-anchor":"end"});tx.textContent=tick(v)}
+  const xl=mk("text",{x:ml,y:H-5,"text-anchor":"start"});xl.textContent=dmy(isoOf(start)).slice(0,5);
+  const xr=mk("text",{x:W-mr,y:H-5,"text-anchor":"end"});xr.textContent=dmy(isoOf(end)).slice(0,5);
+  let marks;
+  if(bar){const y0=y(0);
+    marks=pts.map(q=>{const cx=x(q.date),r=cx+dw/2,l=Math.max(ml,cx-dw/2-(q.gap>1?(q.gap-1)*dw:0)),ins=Math.min(1.5,(r-l)*0.15);const top=Math.min(y(q.v),y0),h=Math.max(1,Math.abs(y(q.v)-y0));
+      const f=q.v<0?"var(--bad)":"var(--chart)";const b=mk("rect",{x:(l+ins).toFixed(1),y:top.toFixed(1),width:Math.max(1,r-l-2*ins).toFixed(1),height:h.toFixed(1),fill:f,"fill-opacity":q.gap>1?"0.55":"0.9",rx:"1","pointer-events":"none"});b._f=f;b._cx=cx;b._cy=top;return b});
+    mk("line",{x1:ml,x2:W-mr,y1:y0,y2:y0,stroke:"var(--muted)","stroke-width":"1"});
+    const avg=vs.reduce((a,v)=>a+v,0)/vs.length,ya=y(avg);mk("line",{x1:ml,x2:W-mr,y1:ya,y2:ya,stroke:"var(--warn)","stroke-width":"1.2","stroke-dasharray":"4 3","pointer-events":"none"});const ta=mk("text",{x:W-mr,y:ya-3,"text-anchor":"end",style:"fill:var(--warn)"});ta.textContent="avg "+nf(avg,0)}
+  else{const d="M"+pts.map(q=>x(q.date).toFixed(1)+" "+y(q.v).toFixed(1)).join(" L");
+    mk("path",{d,fill:"none",stroke:"var(--title)","stroke-width":"2","stroke-linejoin":"round"});
+    marks=pts.map(q=>{const c=mk("circle",{cx:x(q.date),cy:y(q.v),r:2.4,fill:"var(--title)","pointer-events":"none"});c._f="var(--title)";c._cx=x(q.date);c._cy=y(q.v);return c})}
+  const guide=mk("line",{x1:0,x2:0,y1:mt,y2:H-mb,stroke:"var(--sel)","stroke-width":"1","stroke-dasharray":"2 2",visibility:"hidden","pointer-events":"none"});
+  const tip=mk("g",{visibility:"hidden","pointer-events":"none"});const tb=document.createElementNS(NS,"rect");tb.setAttribute("rx","4");tb.setAttribute("fill","var(--ink)");tip.append(tb);
+  const tt=document.createElementNS(NS,"text");tt.setAttribute("text-anchor","middle");tt.setAttribute("style","fill:var(--bg);font-size:10px;font-weight:700");tip.append(tt);
+  const fmtV=v=>bar?nf(v,0)+" "+unit+"/day":fReg(v)+" "+unit;
+  let cur=-1;
+  const pick=i=>{marks.forEach(c=>{c.setAttribute("fill",c._f);if(!bar){c.setAttribute("r","2.4");c.removeAttribute("stroke")}});
+    if(i===cur||i<0){cur=-1;tip.setAttribute("visibility","hidden");guide.setAttribute("visibility","hidden");sel.textContent="Tap a "+(bar?"bar":"point")+" to see its value";return}
+    cur=i;const q=pts[i],c=marks[i],cx=c._cx,cy=c._cy;c.setAttribute("fill","var(--sel)");if(!bar){c.setAttribute("r","5");c.setAttribute("stroke","var(--panel)");c.setAttribute("stroke-width","1.5");svg.append(c)}
+    guide.setAttribute("x1",cx);guide.setAttribute("x2",cx);guide.setAttribute("visibility","visible");
+    const lab=fmtV(q.v);tt.textContent=lab;const w=Math.max(40,lab.length*6+12),h=16;const bx=Math.min(W-mr-w,Math.max(ml,cx-w/2));let by=cy-h-8;if(by<1)by=cy+8;
+    tb.setAttribute("x",bx);tb.setAttribute("y",by);tb.setAttribute("width",w);tb.setAttribute("height",h);tt.setAttribute("x",bx+w/2);tt.setAttribute("y",by+11.5);tip.setAttribute("visibility","visible");svg.append(tip);
+    sel.textContent="";sel.append(dmy(q.date)+(bar&&q.gap>1?" (average over "+q.gap+" days, "+nf(q.v*q.gap,0)+" kWh in total)":"")+" · ",el("b",{text:lab}))};
+  pts.forEach((q,i)=>{const cx=x(q.date),lx=i?(x(pts[i-1].date)+cx)/2:ml,rx=i<pts.length-1?(cx+x(pts[i+1].date))/2:W-mr;
+    const hr=mk("rect",{class:"hit",x:lx,y:mt,width:Math.max(2,rx-lx),height:H-mt-mb,fill:"transparent"});const ti=document.createElementNS(NS,"title");ti.textContent=dmy(q.date)+": "+fmtV(q.v);hr.append(ti);hr.addEventListener("click",()=>pick(i))});
+  return[svg,sel];
+}
+const regPts=(id,s0,e0)=>RAW[id].filter(r=>r.date>=s0&&r.date<=e0).map(r=>({date:r.date,v:r.kwh}));
+const usePts=(id,s0,e0)=>series(id).filter(r=>r.perDay!=null&&r.date>=s0&&r.date<=e0).map(r=>({date:r.date,v:r.perDay,gap:r.gap}));
+
+/* ---------- dashboard ---------- */
+function renderDock(){
+  const g=$("#mdockG");g.textContent="";const done=recordedToday();
+  METERS.forEach(m=>{const b=el("button",{type:"button",class:"mbtn","aria-pressed":String(m.id===sel),title:m.name+" ("+m.id+") — "+(done.includes(m.id)?"recorded today":"pending today")},el("span",{class:"st"+(done.includes(m.id)?" done":""),"aria-hidden":"true"}),el("span",{class:"cd",text:m.id}),el("span",{class:"nm",text:m.name}));
+    b.addEventListener("click",()=>{sel=m.id;ls.set("pm_sel",sel);renderDash()});g.append(b)});
+}
+function tile(l,v,u){return el("div",{class:"pd-tile"},el("span",{class:"l",text:l}),el("span",{class:"v",text:v}),el("span",{class:"u",text:u}))}
+function renderDash(){
+  renderDock();
+  const td=isoToday(),done=recordedToday();
+  const c1=$("#todayCard");c1.textContent="";
+  const nb2=el("button",{type:"button",class:"net",id:"netBtn2"},el("span",{class:"dot"}),el("span",{text:"Offline"}));nb2.addEventListener("click",()=>$("#netBtn").click());
+  const who=signedIn();
+  const sib=el("button",{type:"button",class:"sign"+(who?" on":""),id:"signBtn","aria-haspopup":"dialog","aria-expanded":"false",title:who?"Signed in as "+who+" — tap to sign out":"Sign in with your name"});
+  if(who)sib.append(el("span",{class:"nm",text:who}),el("span",{class:"so",text:"Sign out"}));else sib.append("Sign in");
+  sib.addEventListener("click",e=>{e.stopPropagation();if(who){signOut();return}openSignIn(sib)});
+  const recs=MID.map(id=>(BYDATE.get(td)||{})[id]).filter(Boolean).sort((a,b)=>String(a.updatedAt||"").localeCompare(String(b.updatedAt||"")));
+  const lr=recs[recs.length-1];const tm=lr?(lr.time||(lr.updatedAt?nowOf(lr.updatedAt):"")):"";
+  const stTxt=!recs.length?"Not recorded yet":(recs.length===6?"Saved":recs.length+" / 6 saved")+(tm?" "+tm:"")+(lr&&lr.recordedBy?" · "+lr.recordedBy:"");
+  const pill=el("span",{class:"pill "+(recs.length===6?"ok":"warn"),text:stTxt});
+  c1.append(el("div",{class:"pd-today2"},
+    el("div",{class:"r1"},el("div",{class:"d",text:dmy(td)}),nb2),sib,
+    el("div",{class:"w",text:new Date().toLocaleDateString("en-GB",{weekday:"long"})+" · today's reading"}),pill));
+  const cta=el("button",{type:"button",class:"btn primary pd-cta",text:recs.length?"Edit today's reading":"Add today's reading"});
+  cta.addEventListener("click",()=>{$("#f_date").value=td;dirty=false;fillForm(td);entrySub=sel;applyEntrySub();selectTab("entry");window.scrollTo(0,0)});
+  c1.append(cta);
+  updateNet();
+  // selected meter
+  const m=METERS.find(x=>x.id===sel),s=series(sel),last=s[s.length-1];const lu=[...s].reverse().find(r=>r.used!=null);
+  const wk=s.filter(r=>r.used!=null&&daysBetween(r.date,td)>=0&&daysBetween(r.date,td)<7);const wU=wk.reduce((a,r)=>a+r.used,0),wD=wk.reduce((a,r)=>a+r.gap,0);
+  const ym=td.slice(0,7),mtd=s.filter(r=>r.used!=null&&r.date.slice(0,7)===ym);
+  const c2=$("#meterCard");c2.textContent="";
+  c2.append(el("div",{class:"pd-meter"},el("div",{},el("span",{class:"tag",text:m.id}),el("div",{class:"nm",text:m.name})),
+    el("span",{class:"pill "+(done.includes(sel)?"ok":"warn"),text:done.includes(sel)?"Recorded today":"Pending today"})));
+  c2.append(el("div",{class:"pd-tiles"},
+    tile("Last register",last?fReg(last.kwh):"—",last?"kWh · "+dmy(last.date):"no readings yet"),
+    tile("Last daily use",lu?nf(lu.used,0):"—",lu?"kWh"+(lu.gap>1?" over "+lu.gap+" days":" · "+dmy(lu.date)):"needs two readings"),
+    tile("7-day average",wD?nf(wU/wD,0):"—","kWh per day"),
+    tile("Month to date",mtd.length?nf(mtd.reduce((a,r)=>a+r.used,0),0):"—","kWh · "+monthName(ym))));
+  c2.append(el("div",{class:"sub",text:"CT/PT multiplier × "+mult(sel)+(realNote(last)?" · Note on last reading: "+realNote(last):"")}));
+  // chart
+  const ch=$("#dashChart");ch.textContent="";const end=new Date();end.setHours(0,0,0,0);const start=new Date(end);start.setDate(start.getDate()-29);
+  const s0=isoOf(start),e0=isoOf(end),sz=isPhone()?{W:340,H:170}:{W:560,H:210};
+  const c1x=el("div",{class:"chart"},el("div",{class:"chart-h"},el("span",{class:"t",text:"Daily consumption · last 30 days (kWh/day)"}),el("span",{class:"v",text:"× "+mult(sel)+" multiplier"})));
+  c1x.append(...chartSvg(usePts(sel,s0,e0),start,end,"kWh",{...sz,type:"bar",label:m.name+" daily consumption"}));
+  const c2x=el("div",{class:"chart"},el("div",{class:"chart-h"},el("span",{class:"t",text:"Cumulative reading · kWh register"}),el("span",{class:"v",text:"last 30 days"})));
+  c2x.append(...chartSvg(regPts(sel,s0,e0),start,end,"kWh",{...sz,type:"line",label:m.name+" cumulative register reading"}));
+  ch.append(c1x,c2x);
+}
+
+/* ---------- daily entry ---------- */
+let entrySub=(v=>MID.includes(v)?v:MID[0])(ls.get("pm_esub"));
+function applyEntrySub(){
+  document.querySelectorAll("#stages > .stage").forEach(c=>{c.hidden=c.dataset.m!==entrySub});
+  $("#stages").classList.add("one");const m=METERS.find(x=>x.id===entrySub);const c=$("#eCur");if(c){c.textContent="";c.append("Entering: ",el("b",{style:"color:var(--title);font-size:15px",text:m.name+" ("+m.id+")"}))}ls.set("pm_esub",entrySub);
+}
+let SESSION=null,SESSION_NAME="";
+const signedIn=()=>SESSION?SESSION_NAME:"";
+function closeSignIn(){const p=$("#signPop");if(p.hidden)return;p.hidden=true;const b=$("#signBtn");if(b)b.setAttribute("aria-expanded","false")}
+function openSignIn(anchor){const p=$("#signPop");if(!p.hidden){closeSignIn();return}
+  $("#signName").value=ls.get("pm_email")||"";$("#signMsg").textContent="";p.hidden=false;
+  const r=anchor.getBoundingClientRect();p.style.top=(r.bottom+6)+"px";p.style.left=Math.max(10,Math.min(r.right-p.offsetWidth,innerWidth-p.offsetWidth-10))+"px";
+  anchor.setAttribute("aria-expanded","true");$("#signName").focus()}
+async function signOut(){try{await sb.auth.signOut()}catch(e){}}
+function closeEntrySheet(){const sh=$("#entrySheet");if(sh.hidden)return;sh.hidden=true;document.querySelectorAll('[data-tab="entry"],[data-go="entry"]').forEach(b=>b.setAttribute("aria-expanded","false"))}
+function openEntrySheet(anchor){
+  const sh=$("#entrySheet");if(!sh.hidden){closeEntrySheet();return}if(typeof closeTrendSheet==="function")closeTrendSheet();
+  const inEntry=!$("#pane-entry").hidden;const date=inEntry?$("#f_date").value:isoToday();const day=BYDATE.get(date)||{};
+  sh.textContent="";sh.append(el("div",{class:"es-h",text:"Daily entry – choose a meter ("+dmy(date)+")"}));
+  METERS.forEach(m=>{const has=!!day[m.id]||(inEntry&&$("#k_"+m.id).value.trim()!=="");
+    const b=el("button",{type:"button",role:"menuitem",class:inEntry&&m.id===entrySub?"on":""},el("span",{},m.name,el("small",{text:m.id})),el("span",{class:"sd"+(has?" done":""),title:has?"Has a reading for "+dmy(date):"No reading yet for "+dmy(date)}));
+    b.addEventListener("click",()=>{closeEntrySheet();if(!inEntry&&!dirty){$("#f_date").value=isoToday();fillForm(isoToday())}entrySub=m.id;applyEntrySub();selectTab("entry");window.scrollTo(0,0);const i=$("#k_"+m.id);if(i&&!isPhone())i.focus()});
+    sh.append(b)});
+  if(!isPhone()){const r=anchor.getBoundingClientRect();sh.style.left=Math.max(10,Math.min(r.left,innerWidth-450))+"px";sh.style.top=(r.bottom+6)+"px";sh.style.bottom=""}
+  else{sh.style.left="";sh.style.top=""}
+  sh.hidden=false;anchor.setAttribute("aria-expanded","true");
+}
+document.addEventListener("click",e=>{if($("#entrySheet").hidden)return;if(e.target.closest("#entrySheet")||e.target.closest('[data-tab="entry"],[data-go="entry"],#eSwitch'))return;closeEntrySheet()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeEntrySheet()});
+window.addEventListener("scroll",()=>{if(!isPhone())closeEntrySheet()},{passive:true});
+let trendSub=(v=>v==="all"||MID.includes(v)?v:"all")(ls.get("pm_tsub"));
+const trendMeters=()=>trendSub==="all"?METERS:METERS.filter(m=>m.id===trendSub);
+function closeTrendSheet(){const sh=$("#trendSheet");if(sh.hidden)return;sh.hidden=true;document.querySelectorAll('[data-tab="trends"],[data-go="trends"],#tSwitch').forEach(b=>b.setAttribute("aria-expanded","false"))}
+function openTrendSheet(anchor){
+  const sh=$("#trendSheet");if(!sh.hidden){closeTrendSheet();return}closeEntrySheet();
+  const inTr=!$("#pane-trends").hidden;
+  sh.textContent="";sh.append(el("div",{class:"es-h",text:"Trends – choose a meter"}));
+  [{id:"all",name:"All meters"},...METERS].forEach(m=>{const b=el("button",{type:"button",role:"menuitem",class:inTr&&m.id===trendSub?"on":""},el("span",{},m.name,el("small",{text:m.id==="all"?"6 meters":m.id})),el("span",{text:"📈","aria-hidden":"true"}));
+    b.addEventListener("click",()=>{closeTrendSheet();trendSub=m.id;ls.set("pm_tsub",trendSub);if(!$("#trPrev").hidden)trHidePrev();selectTab("trends");window.scrollTo(0,0)});sh.append(b)});
+  if(!isPhone()){const r=anchor.getBoundingClientRect();sh.style.left=Math.max(10,Math.min(r.left,innerWidth-450))+"px";sh.style.top=(r.bottom+6)+"px"}else{sh.style.left="";sh.style.top=""}
+  sh.hidden=false;anchor.setAttribute("aria-expanded","true");
+}
+document.addEventListener("click",e=>{if($("#trendSheet").hidden)return;if(e.target.closest("#trendSheet")||e.target.closest('[data-tab="trends"],[data-go="trends"],#tSwitch'))return;closeTrendSheet()});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeTrendSheet()});
+window.addEventListener("scroll",()=>{if(!isPhone())closeTrendSheet()},{passive:true});
+function buildForm(){
+  const host=$("#stages");host.textContent="";
+  METERS.forEach((m,i)=>{
+    const c=el("section",{class:"stage","data-m":m.id});
+    c.append(el("div",{class:"stage-h"},el("h2",{text:m.name}),el("span",{class:"step",text:m.id})));
+    const pr=el("div",{class:"prow"},el("label",{for:"k_"+m.id},"kWh register reading",el("span",{class:"u",text:"kWh"})),el("input",{type:"number",id:"k_"+m.id,class:"big",step:"any",min:"0",inputmode:"decimal",placeholder:"0"}),el("span",{class:"pill",id:"p_"+m.id,text:"—"}));
+    c.append(pr);
+    c.append(el("div",{class:"two"},el("div",{class:"field"},el("label",{for:"kw_"+m.id,text:"Max demand (kW)"}),el("input",{type:"number",id:"kw_"+m.id,step:"any",min:"0",inputmode:"decimal",placeholder:"optional"})),
+      el("div",{class:"field"},el("label",{for:"pf_"+m.id,text:"Power factor"}),el("input",{type:"number",id:"pf_"+m.id,step:"0.01",min:"0",max:"1",inputmode:"decimal",placeholder:"optional"}))));
+    c.append(el("div",{class:"field"},el("label",{for:"n_"+m.id,text:"Note"}),el("input",{type:"text",id:"n_"+m.id,placeholder:"optional — e.g. meter reset, shutdown"})));
+    c.append(el("div",{class:"derived",id:"d_"+m.id}));
+    host.append(c);
+    ["k_","kw_","pf_","n_"].forEach(p=>$("#"+p+m.id).addEventListener("input",()=>{dirty=true;pending=null;refreshPills()}));
+  });
+  applyEntrySub();
+}
+function fillForm(date){
+  const day=BYDATE.get(date)||{};
+  METERS.forEach(m=>{const r=day[m.id];$("#k_"+m.id).value=r?r.kwh:"";$("#kw_"+m.id).value=r&&r.kw!=null?r.kw:"";$("#pf_"+m.id).value=r&&r.pf!=null?r.pf:"";$("#n_"+m.id).value=r?realNote(r):""});
+  const any=MID.map(id=>day[id]).find(Boolean);
+  $("#f_time").value=nowHM();
+  setBy(any&&any.recordedBy?any.recordedBy:(signedIn()||""));
+  const n=MID.filter(id=>day[id]).length;
+  $("#loadedNote").textContent=n?n+" of 6 meters already recorded for "+dmy(date)+" — saving updates them.":"";
+  $("#saveBtn").textContent=n?"Update readings":"Save readings";
+  refreshPills();
+}
+function refreshPills(){
+  const date=$("#f_date").value;const day=BYDATE.get(date)||{};
+  METERS.forEach(m=>{const sd=$("#sd_"+m.id);if(sd){const has=!!day[m.id]||$("#k_"+m.id).value.trim()!=="";sd.className="sd"+(has?" done":"");sd.title=day[m.id]?"Saved for this date":has?"Entered, not saved yet":"Not entered"}
+    const v=parseFloat($("#k_"+m.id).value);const p=prevReading(m.id,date);const pill=$("#p_"+m.id);const d=$("#d_"+m.id);d.textContent="";
+    if(isNaN(v)){pill.className="pill";pill.textContent=day[m.id]?"saved":"—"}
+    else if(p&&v<p.kwh){pill.className="pill bad";pill.textContent="lower"}
+    else if(day[m.id]&&day[m.id].kwh===v){pill.className="pill ok";pill.textContent="saved"}
+    else{pill.className="pill warn";pill.textContent="new"}
+    d.append(el("div",{},el("span",{text:"Previous reading"}),el("b",{text:p?fReg(p.kwh)+" · "+dmy(p.date):"none"})));
+    if(p&&!isNaN(v)){const g=Math.max(1,daysBetween(p.date,date)),u=(v-p.kwh)*mult(m.id);
+      d.append(el("div",{},el("span",{text:"Used since "+dmy(p.date)}),el("b",{class:u<0?"bad":"",text:nf(u,0)+" kWh"})));
+      if(g>1)d.append(el("div",{},el("span",{text:"Per day ("+g+" days)"}),el("b",{text:nf(u/g,0)+" kWh/d"})))}
+  });
+}
+let pending=null;
+async function save(){
+  const msg=$("#saveMsg");const date=$("#f_date").value;
+  if(!db){msg.className="msg err";msg.textContent="The shared log isn't connected in this view, so readings can't be saved.";return}
+  if(!date){msg.className="msg err";msg.textContent="Pick a reading date first.";return}
+  const by=$("#f_by").value.trim();if(!by){msg.className="msg err";msg.textContent="Select who recorded these readings.";$("#f_by").focus();return}
+  const day=BYDATE.get(date)||{};const writes=[],warns=[];
+  for(const m of METERS){const raw=$("#k_"+m.id).value.trim();if(raw==="")continue;const v=Number(raw);
+    if(!isFinite(v)||v<0){msg.className="msg err";msg.textContent=m.name+": enter a valid kWh reading.";return}
+    const kw=$("#kw_"+m.id).value.trim()===""?null:Number($("#kw_"+m.id).value),pf=$("#pf_"+m.id).value.trim()===""?null:Number($("#pf_"+m.id).value);
+    if(pf!=null&&(pf<0||pf>1)){msg.className="msg err";msg.textContent=m.name+": power factor must be between 0 and 1.";return}
+    const note=$("#n_"+m.id).value.trim();const ex=day[m.id];
+    const body={meter:m.id,date,time:nowHM(),kwh:v,kw,pf,remarks:note||(ex&&ex.remarks===GENERIC_NOTE?GENERIC_NOTE:null),recordedBy:by,recordedByEmail:emailOf(by)||(ex&&ex.recordedBy===by?ex.recordedByEmail||null:null),updatedAt:new Date().toISOString()};
+    if(ex&&ex.kwh===v&&(ex.kw??null)===kw&&(ex.pf??null)===pf&&(realNote(ex)||"")===note&&ex.recordedBy===by)continue;
+    const p=prevReading(m.id,date);if(p&&v<p.kwh)warns.push(m.name+" is lower than "+dmy(p.date)+" ("+fReg(p.kwh)+")");
+    writes.push(body)}
+  if(!writes.length){msg.className="msg";msg.textContent="Nothing new to save.";return}
+  const sig=JSON.stringify(writes.map(w=>[w.meter,w.kwh]));
+  if(warns.length&&pending!==sig){pending=sig;msg.className="msg warn";msg.textContent=warns.join("; ")+". Check the register, then tap Save again to confirm.";return}
+  pending=null;ls.set("pm_by",by);
+  $("#saveBtn").disabled=true;msg.className="msg";msg.textContent="Saving…";let ok=0;
+  try{for(const w of writes){await db.collection("readings").doc(w.meter+"_"+w.date).set(w);ok++}
+    dirty=false;msg.className="msg good";msg.textContent="Saved "+ok+" meter reading"+(ok>1?"s":"")+" for "+dmy(date)+" at "+nowHM()+".";
+    autoSync(msg,false);
+  }catch(e){msg.className="msg err";msg.textContent=(ok?ok+" saved, then ":"")+dbErr(e)}
+  finally{$("#saveBtn").disabled=!canWrite}
+}
+function dbErr(e){const c=e&&e.code;if(c==="42501"||c==="PGRST301")return"you don't have permission to save. Sign in with a staff email.";if(e&&e.message&&!["invalid_argument","quota_exceeded"].includes(c))return"couldn't save ("+e.message+").";return c==="invalid_argument"?"you have view-only access, so readings weren't saved.":c==="quota_exceeded"?"storage is full. Export old months and delete some readings.":"couldn't save. Check your connection and try again."}
+
+/* ---------- history ---------- */
+let histSub=ls.get("pm_hsub")==="use"?"use":"read";
+function months(){const s=new Set([isoToday().slice(0,7)]);BYDATE.forEach((_,k)=>s.add(k.slice(0,7)));return[...s].sort().reverse()}
+function renderMonthSelect(){const s=$("#h_month"),cur=s.value;s.textContent="";months().forEach(m=>s.append(el("option",{value:m,text:monthName(m)})));if(cur&&[...s.options].some(o=>o.value===cur))s.value=cur}
+function useMap(){const o={};MID.forEach(id=>{o[id]={};series(id).forEach(r=>{o[id][r.date]=r})});return o}
+function renderHistory(){
+  document.querySelectorAll(".subtabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.sub===histSub)));
+  const m=$("#h_month").value||isoToday().slice(0,7);const host=$("#histBody");host.textContent="";
+  const dates=[...BYDATE.keys()].filter(d=>d.startsWith(m)).sort().reverse();
+  if(!dates.length){host.append(el("div",{class:"empty"},el("b",{text:"No readings for "+monthName(m)}),"Saved daily entries appear here, one row per day."));return}
+  const U=useMap();const isUse=histSub==="use";
+  const chips=el("div",{class:"chips",style:"margin-bottom:10px"},el("span",{class:"chip"},"Days logged ",el("b",{text:String(dates.length)})));
+  if(isUse)METERS.forEach(mt=>{const t=dates.map(d=>U[mt.id][d]).filter(r=>r&&r.used!=null).reduce((a,r)=>a+r.used,0);chips.append(el("span",{class:"chip"},mt.name+" ",el("b",{text:nf(t,0)+" kWh"})))});
+  else{const full=dates.filter(d=>MID.every(id=>BYDATE.get(d)[id])).length;chips.append(el("span",{class:"chip "+(full===dates.length?"ok":"warn")},"Days with all 6 meters ",el("b",{text:full+" / "+dates.length})))}
+  host.append(chips);
+  const wrap=el("div",{class:"tbl-wrap"}),t=el("table"),hr=el("tr");
+  hr.append(el("th",{text:"Date"}),el("th",{text:"Day"}),el("th",{text:"Time"}),el("th",{text:"By"}));
+  METERS.forEach(mt=>hr.append(el("th",{},el("span",{class:"cd",text:mt.id}),mt.name+(isUse?" (kWh)":""))));
+  hr.append(el("th",{text:"Remarks"}),el("th",{text:"Actions"}));t.append(el("thead",{},hr));
+  const tb=el("tbody");
+  for(const date of dates){const day=BYDATE.get(date);const any=MID.map(id=>day[id]).find(Boolean)||{};const tr=el("tr");
+    tr.append(el("td",{text:dmy(date)}),el("td",{text:dayName(date)}),el("td",{text:any.time||"—"}),el("td",{text:any.recordedBy||"—"}));
+    const notes=[];
+    METERS.forEach(mt=>{const r=day[mt.id];const n=realNote(r);if(n)notes.push(mt.id+": "+n);
+      if(!r){tr.append(el("td",{text:"—"}));return}
+      if(isUse){const u=U[mt.id][date];const td=el("td",{class:u&&u.used<0?"bad":"",text:u&&u.used!=null?nf(u.used,0):"—"});if(u&&u.gap>1)td.append(el("span",{class:"gap",text:u.gap+"d",title:"Covers "+u.gap+" days"}));tr.append(td)}
+      else{const td=el("td",{class:n?"warn":"",text:fReg(r.kwh)});if(n)td.title=n;tr.append(td)}});
+    tr.append(el("td",{class:"rem",text:notes.join(" · ")}));
+    const act=el("div",{class:"act"}),cell=el("td",{},act);
+    const draw=()=>{act.textContent="";tr.classList.remove("flash");
+      const eb=el("button",{type:"button",class:"ed",title:"Edit","aria-label":"Edit "+dmy(date)});eb.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;pointer-events:none"><path d="M17 3a2.85 2.85 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+      eb.addEventListener("click",()=>{$("#f_date").value=date;dirty=false;fillForm(date);selectTab("entry");window.scrollTo({top:0,behavior:"smooth"});$("#saveMsg").className="msg";$("#saveMsg").textContent="Editing "+dmy(date)+". Change the readings and tap Update readings."});
+      const dl=el("button",{type:"button",class:"del",text:"✕",title:"Delete","aria-label":"Delete readings for "+dmy(date)});
+      if(!canWrite){eb.disabled=dl.disabled=true;eb.title=dl.title="View-only access"}
+      dl.addEventListener("click",()=>{act.textContent="";tr.classList.add("flash");const yes=el("button",{type:"button",class:"yes",text:"Yes, delete"}),no=el("button",{type:"button",text:"Cancel"});
+        act.append(el("span",{class:"q",text:"Delete all readings for "+dmy(date)+"?"}),yes,no);no.addEventListener("click",draw);yes.focus();
+        yes.addEventListener("click",async()=>{yes.disabled=no.disabled=true;yes.textContent="Deleting…";const msg=$("#csvMsg");
+          try{for(const id of MID){if(day[id])await db.collection("readings").doc(day[id].id).delete()}msg.className="msg good";msg.textContent="Deleted readings for "+dmy(date)+".";autoSync(msg,false)}
+          catch(e){msg.className="msg err";msg.textContent="Couldn't delete: "+dbErr(e);draw()}})});
+      act.append(eb,dl)};
+    draw();tr.append(cell);tb.append(tr)}
+  t.append(tb);wrap.append(t);host.append(wrap);
+}
+
+/* ---------- CSV (wide format: one row per day) ---------- */
+const q=s=>{s=s==null?"":String(s);return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+function wideHead(){return["Date","Day","Time","Recorded by","Recorded by email",...METERS.map(m=>m.id+" "+m.name+" register (kWh)"),...METERS.map(m=>m.id+" used (kWh)"),"Remarks"]}
+function wideRows(filter){const U=useMap();return[...BYDATE.keys()].filter(d=>!filter||filter(d)).sort().map(date=>{const day=BYDATE.get(date),any=MID.map(id=>day[id]).find(Boolean)||{};
+  return[dmy(date),dayName(date),any.time||"",any.recordedBy||"",any.recordedByEmail||emailOf(any.recordedBy)||"",...MID.map(id=>day[id]?day[id].kwh:""),...MID.map(id=>{const u=U[id][date];return u&&u.used!=null?Math.round(u.used*100)/100:""}),MID.filter(id=>realNote(day[id])).map(id=>id+": "+realNote(day[id])).join("; ")]})}
+const toCsv=rows=>[wideHead(),...rows].map(r=>r.map(q).join(",")).join("\n");
+async function exportCsv(){
+  const m=$("#h_month").value,msg=$("#csvMsg");const rows=wideRows(d=>d.startsWith(m));
+  if(!rows.length){msg.className="msg";msg.textContent="Nothing to export for this month.";return}
+  if(!downloads){msg.className="msg err";msg.textContent="File export isn't available in this view.";return}
+  try{await downloads.save({filename:"power-meter-daily-log-"+m+".csv",data:toCsv(rows)});msg.className="msg good";msg.textContent="CSV saved ("+rows.length+" days)."}
+  catch(e){msg.className="msg"+(e&&e.code==="declined"?"":" err");msg.textContent=e&&e.code==="declined"?"Export cancelled.":"Couldn't export the file ("+(e&&e.code||"error")+")."}
+}
+
+/* ---------- import ---------- */
+function parseCsv(text){text=text.replace(/^﻿/,"");const out=[];let row=[],f="",qu=false;
+  const l0=text.split(/\r?\n/)[0]||"";const delim=(l0.match(/;/g)||[]).length>(l0.match(/,/g)||[]).length?";":(l0.includes("\t")&&!l0.includes(",")?"\t":",");
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(qu){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else qu=false}else f+=c}
+    else if(c==='"')qu=true;else if(c===delim){row.push(f);f=""}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&text[i+1]==="\n")i++;row.push(f);out.push(row);row=[];f=""}else f+=c}
+  if(f!==""||row.length){row.push(f);out.push(row)}return out.filter(r=>r.some(x=>String(x).trim()!==""))}
+function normDate(v){v=String(v??"").trim();if(!v)return null;let m;
+  const chk=(y,mo,d)=>{if(mo<1||mo>12||d<1||d>31)return null;const dt=new Date(y,mo-1,d);if(dt.getMonth()!==mo-1)return null;return y+"-"+pad(mo)+"-"+pad(d)};
+  if(m=v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))return chk(+m[1],+m[2],+m[3]);
+  if(m=v.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/)){let y=+m[3];if(y<100)y+=2000;return chk(y,+m[2],+m[1])}
+  if(m=v.match(/^(\d{1,2})[\s-]([A-Za-z]{3,})[\s-,]*(\d{4})/)){const mi=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(m[2].slice(0,3).toLowerCase());if(mi>=0)return chk(+m[3],mi+1,+m[1])}
+  if(/^\d{5}(\.\d+)?$/.test(v)){const d=new Date(Date.UTC(1899,11,30)+Math.floor(+v)*864e5);return chk(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate())}
+  return null}
+function normTime(v){v=String(v??"").trim();const m=v.match(/^(\d{1,2}):(\d{2})/);if(!m)return null;let h=+m[1];if(/pm/i.test(v)&&h<12)h+=12;if(/am/i.test(v)&&h===12)h=0;return pad(h)+":"+m[2]}
+function num(v){if(v==null)return null;const s=String(v).replace(/[,\s]/g,"").replace(/kwh|kw/ig,"");if(s==="")return null;const n=Number(s);return isFinite(n)?n:null}
+const squash=s=>String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+function matchMeter(v){const k=squash(v);if(!k)return null;const h=METERS.find(m=>squash(m.id)===k||squash(m.name)===k);return h?h.id:null}
+function meterInHeader(h){const k=squash(h);if(!k||/used|usage|consum/.test(k))return null;for(const m of METERS){if(k.startsWith(squash(m.id))||k.includes(squash(m.name)))return m.id}if(/^(soapmain|soap)/.test(k))return"SB-SM";if(/^pump/.test(k))return"PUMP";if(/^(compressor)/.test(k))return"COM";return null}
+let IMP=null;
+function analyse(table){
+  if(table.length<2)return{err:"The file has no data rows."};
+  const H=table[0].map(x=>String(x).trim().toLowerCase());const find=(...re)=>H.findIndex(x=>re.some(r=>r.test(x)));
+  const iDate=find(/^date$/,/date/),iTime=find(/^time$/,/time/),iBy=find(/recorded|^by$/),iMeter=find(/^meter( id| code)?$/),iRem=find(/remark|note|comment/);
+  if(iDate<0)return{err:"Couldn't find a Date column in the first row."};
+  const good=[],bad=[],seen=new Set();
+  const push=(meter,date,kwh,extra,line)=>{const key=meter+"_"+date;if(seen.has(key)){bad.push("Row "+line+": duplicate "+meter+" on "+dmy(date)+" (kept the first)");return}seen.add(key);good.push({meter,date,kwh,...extra})};
+  if(iMeter>=0){const iK=find(/register/,/^kwh( reading)?$/,/reading/,/^kwh/),iKw=find(/max.?demand/,/^md/,/^kw$/),iPf=find(/power.?factor/,/^pf$/);
+    if(iK<0)return{err:"Found a Meter column but no Register kWh column."};
+    table.slice(1).forEach((r,i)=>{const line=i+2;const mt=matchMeter(r[iMeter]);if(!mt){bad.push("Row "+line+": unknown meter “"+(r[iMeter]||"")+"”");return}
+      const d=normDate(r[iDate]);if(!d){bad.push("Row "+line+": unreadable date “"+(r[iDate]||"")+"”");return}
+      const k=num(r[iK]);if(k==null||k<0){bad.push("Row "+line+": no kWh reading");return}
+      let pf=iPf>=0?num(r[iPf]):null;if(pf!=null&&(pf<0||pf>1))pf=null;
+      push(mt,d,k,{time:iTime>=0?normTime(r[iTime]):null,kw:iKw>=0?num(r[iKw]):null,pf,remarks:iRem>=0?(String(r[iRem]||"").trim()||null):null,recordedBy:iBy>=0?(String(r[iBy]||"").trim()||null):null},line)})}
+  else{const cols=[];H.forEach((h,i)=>{const m=meterInHeader(table[0][i]);if(m&&!cols.some(c=>c.m===m))cols.push({m,i})});
+    if(!cols.length)return{err:"Couldn't find meter columns. Use headers such as LV1885, LV201357, SB-UT, COM, PUMP, SB-SM (or the meter names), or a Meter column."};
+    table.slice(1).forEach((r,i)=>{const line=i+2;const d=normDate(r[iDate]);if(!d){if(cols.some(c=>num(r[c.i])!=null))bad.push("Row "+line+": unreadable date “"+(r[iDate]||"")+"”");return}
+      const rem=iRem>=0?String(r[iRem]||"").trim():"";
+      cols.forEach(c=>{const raw=String(r[c.i]??"").trim();if(raw==="")return;const k=num(raw);if(k==null||k<0){bad.push("Row "+line+": "+c.m+" value “"+raw+"” isn't a number");return}
+        const mn=rem.match(new RegExp(c.m.replace(/[-]/g,"\\-")+":\\s*([^;]+)"));
+        push(c.m,d,k,{time:iTime>=0?normTime(r[iTime]):null,kw:null,pf:null,remarks:mn?mn[1].trim():null,recordedBy:iBy>=0?(String(r[iBy]||"").trim()||null):null},line)})})}
+  return{good,bad};
+}
+function showPreview(text,source){
+  const res=analyse(parseCsv(text));const pv=$("#impPreview"),msg=$("#impMsg");
+  if(res.err){IMP=null;pv.hidden=true;msg.className="msg err";msg.textContent=res.err;return}
+  IMP=res.good;const exist=IMP.filter(r=>BYDATE.get(r.date)&&BYDATE.get(r.date)[r.meter]).length;const days=new Set(IMP.map(r=>r.date)).size;
+  msg.className="msg";msg.textContent="Loaded from "+source+".";
+  const ch=$("#impChips");ch.textContent="";
+  ch.append(el("span",{class:"chip ok"},"Valid readings ",el("b",{text:String(IMP.length)})),el("span",{class:"chip"},"Days ",el("b",{text:String(days)})));
+  if(exist)ch.append(el("span",{class:"chip warn"},"Already logged ",el("b",{text:String(exist)})));
+  if(res.bad.length)ch.append(el("span",{class:"chip bad"},"Skipped ",el("b",{text:String(res.bad.length)})));
+  const sk=$("#impSkip");sk.textContent="";if(res.bad.length){const d=el("details",{class:"skip"},el("summary",{text:"Show skipped rows"}));res.bad.slice(0,200).forEach(b=>d.append(el("div",{text:b})));sk.append(d)}
+  $("#impNew").textContent="Add "+(IMP.length-exist)+" new reading"+(IMP.length-exist===1?"":"s");$("#impNew").disabled=!(IMP.length-exist)||!canWrite;
+  $("#impAll").hidden=!exist;$("#impAll").disabled=!canWrite;pv.hidden=!IMP.length;if(!IMP.length){msg.className="msg err";msg.textContent="No valid readings found in that file."}
+}
+function resetImport(){IMP=null;$("#impPreview").hidden=true;$("#impFile").value=""}
+async function runImport(overwrite){
+  if(!IMP||!db)return;const msg=$("#impMsg");const todo=IMP.filter(r=>overwrite||!(BYDATE.get(r.date)&&BYDATE.get(r.date)[r.meter]));if(!todo.length)return;
+  $("#impNew").disabled=$("#impAll").disabled=true;let ok=0,fail=0,last=null;
+  for(const r of todo){msg.className="msg";msg.textContent="Importing "+(ok+fail+1)+" of "+todo.length+"…";
+    const body={...r,updatedAt:new Date().toISOString(),source:"import"};
+    try{await db.collection("readings").doc(r.meter+"_"+r.date).set(body);ok++}catch(e){fail++;last=e;if(e&&(e.code==="invalid_argument"||e.code==="quota_exceeded"||e.code==="revoked"))break}}
+  resetImport();msg.className="msg "+(fail?"err":"good");msg.textContent=ok+" reading"+(ok===1?"":"s")+" imported"+(fail?", "+fail+" failed ("+dbErr(last)+")":"")+".";
+  if(ok)autoSync(msg,false);
+}
+function decodeB64(s){try{const bin=atob(s.replace(/\s/g,""));return new TextDecoder("utf-8").decode(Uint8Array.from(bin,c=>c.charCodeAt(0)))}catch(e){return null}}
+const looksCsv=t=>typeof t==="string"&&/[,;\t]/.test(t)&&/\n/.test(t);
+function extractText(res){const c=[];const walk=(v,d)=>{if(d>6||v==null)return;if(typeof v==="string"){c.push(v);return}if(Array.isArray(v)){v.forEach(x=>walk(x,d+1));return}if(typeof v==="object")Object.values(v).forEach(x=>walk(x,d+1))};
+  walk(res.payload,0);walk(res.structuredContent,0);(res.content||[]).forEach(b=>walk(b,0));
+  for(const s of c){if(/^[A-Za-z0-9+\/=\s]{16,}$/.test(s)&&s.length%4<=1){const t=decodeB64(s);if(looksCsv(t))return t}}for(const s of c){if(looksCsv(s))return s}return null}
+function mcpErr(e,server,what){const c=e&&e.code;return c==="server_not_connected"?"Add "+server+" in claude.ai Settings → Connectors, then try again.":c==="needs_reauth"?"Reconnect "+server+" in claude.ai Settings → Connectors, then try again.":c==="selection_required"?"Choose which "+server+" connection to use when Claude asks, then try again.":(c==="not_in_manifest"||c==="approval_required")?server+" wasn't allowed for this page. Try again and allow it when asked.":c==="blocked_by_policy"?"Your organisation doesn't allow "+server+" here.":c==="tool_error"?server+" couldn't "+what+". Check the link and that you have access.":"Couldn't "+what+" ("+(c||"error")+")."}
+async function getMcp(){if(!mcp&&window.claude&&window.claude.use){try{mcp=await window.claude.use("mcp")}catch(e){mcp=null}}return mcp}
+async function loadFromLink(){
+  const url=$("#impUrl").value.trim(),msg=$("#impMsg");
+  const sh=url.match(/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);const dr=url.match(/drive\.google\.com\/(?:file\/d\/|open\?id=|uc\?(?:[^#]*&)?id=)([A-Za-z0-9_-]+)/)||url.match(/[?&]id=([A-Za-z0-9_-]{20,})/);
+  if(!sh&&!dr){msg.className="msg err";msg.textContent=/onedrive|sharepoint|dropbox|1drv/i.test(url)?"OneDrive and Dropbox links can't be read from here. Download the CSV and choose it under From this device.":"Paste a Google Drive file link or a Google Sheets link.";return}
+  if(!await getMcp()){msg.className="msg err";msg.textContent="Cloud links work only when this log is opened in Claude with the Google connectors. Use From this device instead.";return}
+  const server=sh?"Google Sheets":"Google Drive";$("#impLoad").disabled=true;msg.className="msg";msg.textContent="Loading from "+server+"…";
+  try{let text=null;
+    if(sh){const r=await mcp.callTool("Google Sheets","get_values",{spreadsheetId:sh[1],range:"A1:AZ5000"},{cache:false});let p=r.payload;if(typeof p==="string"){try{p=JSON.parse(p)}catch(e){}}const v=p&&p.values;if(Array.isArray(v))text=v.map(row=>row.map(q).join(",")).join("\n")}
+    else{const r=await mcp.callTool("Google Drive","download_file_content",{fileId:dr[1],exportMimeType:"text/csv"},{cache:false});text=extractText(r)}
+    if(!text){msg.className="msg err";msg.textContent="The file loaded but no table was found in it. Check it's a CSV or a Google Sheet.";return}
+    showPreview(text,server+" link")}
+  catch(e){msg.className="msg err";msg.textContent=mcpErr(e,server,"open that file")}
+  finally{$("#impLoad").disabled=false}
+}
+
+/* ---------- Google Sheet sync & backups ---------- */
+function folderId(u){u=String(u||"").trim();if(!u)return null;const m=u.match(/\/folders\/([A-Za-z0-9_-]{10,})/)||u.match(/[?&]id=([A-Za-z0-9_-]{10,})/)||u.match(/^([A-Za-z0-9_-]{20,})$/);return m?m[1]:false}
+function sheetId(u){u=String(u||"").trim();if(!u)return null;const m=u.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/)||u.match(/^([A-Za-z0-9_-]{30,})$/);return m?m[1]:false}
+const cfgSheet=()=>bkCfg&&bkCfg.sheet!=null?bkCfg.sheet:$("#bkSheet").value.trim();
+const autoOn=()=>bkCfg?bkCfg.auto!==false:$("#bkAuto").checked;
+function showSheetLink(){const e=$("#bkSheetLink");e.textContent="";const id=sheetId($("#bkSheet").value);if(id)e.append(el("a",{href:"https://docs.google.com/spreadsheets/d/"+id+"/edit",target:"_blank",rel:"noopener",text:"Open the Google Sheet"}))}
+function applyCfg(){if(!bkCfg)return;if(document.activeElement!==$("#bkFolder"))$("#bkFolder").value=bkCfg.folder||"";if(document.activeElement!==$("#bkSheet")){$("#bkSheet").value=bkCfg.sheet||"";showSheetLink()}$("#bkAuto").checked=bkCfg.auto!==false}
+async function saveCfg(){const f=$("#bkFolder").value.trim();if(folderId(f)===false)return"folder";const sh=$("#bkSheet").value.trim();if(sh&&sheetId(sh)===false)return"sheet";
+  const next={folder:f,sheet:sh,auto:$("#bkAuto").checked};
+  if(bkCfg&&bkCfg.folder===next.folder&&bkCfg.sheet===next.sheet&&(bkCfg.auto!==false)===next.auto)return true;
+  bkCfg=next;if(db&&canWrite){try{await db.doc("meta/backupcfg").set(next)}catch(e){}}return true}
+function setSync(state){setSyncOne(state,$("#syncStat"),$("#syncTxt"));const a=$("#syncStat3");if(a)setSyncOne(state,a,a.lastChild)}
+function setSyncOne(state,a,t){
+  if(!a||!t)return;if(state==="busy"){a.className="sync busy";t.textContent="Google Sheet syncing…";return}
+  if(state==="fail")syncFail=true;else if(state==="ok")syncFail=false;
+  const at=autoInfo&&autoInfo.at?new Date(autoInfo.at):null;
+  if(autoInfo&&autoInfo.url)a.setAttribute("href",autoInfo.url);else a.removeAttribute("href");
+  if(syncFail){a.className="sync warn";t.textContent="Google Sheet sync failed"+(at?" · last "+pad(at.getHours())+":"+pad(at.getMinutes()):"");a.title="The last save didn't reach Google Drive. Readings are still saved in the log.";return}
+  if(at){const today=isoToday()===isoOf(at);a.className="sync ok";t.textContent="Google Sheet Synced "+pad(at.getHours())+":"+pad(at.getMinutes())+(today?"":" "+pad(at.getDate())+"-"+pad(at.getMonth()+1));a.title="Open the synced copy"}
+  else{a.className="sync";t.textContent="Google Sheet not synced";a.title="Set the Google Sheet in System Settings"}
+}
+function renderAutoLast(){setSync("");const e=$("#bkAutoLast");e.textContent="";if(!autoInfo||!autoInfo.at)return;const t=new Date(autoInfo.at);
+  e.append("Latest sync: "+dmy(isoOf(t))+" "+pad(t.getHours())+":"+pad(t.getMinutes())+(autoInfo.by?" by "+autoInfo.by:"")+(autoInfo.days?" · "+autoInfo.days+" days ":" "));
+  if(autoInfo.url)e.append(el("a",{href:autoInfo.url,target:"_blank",rel:"noopener",text:"Open file"}))}
+function renderLastBackup(){const e=$("#bkLast");e.textContent="";if(!lastBackup||!lastBackup.at)return;const t=new Date(lastBackup.at);
+  e.append("Last backup: "+dmy(isoOf(t))+" "+pad(t.getHours())+":"+pad(t.getMinutes())+(lastBackup.by?" by "+lastBackup.by:"")+(lastBackup.days?" · "+lastBackup.days+" days ":" "));
+  if(lastBackup.url)e.append(el("a",{href:lastBackup.url,target:"_blank",rel:"noopener",text:"Open file"}))}
+const fileUrl=p=>{const id=p&&(p.id||p.fileId||(p.file&&p.file.id));return{id,url:(p&&(p.webViewLink||p.alternateLink||p.url))||(id?"https://drive.google.com/file/d/"+id+"/view":null)}};
+const pl=r=>{let p=r&&r.payload;if(typeof p==="string"){try{p=JSON.parse(p)}catch(e){}}return p};
+async function autoSync(msg,force){return; // Google Sheet sync needs Claude connectors
+  if((!force&&!autoOn())||autoBusy||!BYDATE.size)return;
+  const fid=folderId(bkCfg?bkCfg.folder:$("#bkFolder").value);if(fid===false)return;
+  const sid=sheetId(cfgSheet());if(sid===false)return;
+  const note=el("span",{text:" Syncing to Google Sheet…"});msg.append(note);
+  if(!await getMcp()){note.textContent=" Google Sheet sync isn't available in this view.";return}
+  autoBusy=true;setSync("busy");const by=$("#f_by").value.trim()||ls.get("pm_by")||"Admin";const rows=wideRows();
+  try{
+    if(sid){const values=[wideHead(),...rows].map(r=>r.map(v=>v==null?"":v));
+      await mcp.callTool("Google Sheets","batch_clear_values",{spreadsheetId:sid,ranges:["A:AZ"]},{cache:false});
+      await mcp.callTool("Google Sheets","append_values",{spreadsheetId:sid,range:"A1",values},{cache:false});
+      autoInfo={fileId:sid,url:"https://docs.google.com/spreadsheets/d/"+sid+"/edit",at:new Date().toISOString(),by,days:rows.length}}
+    else{const args={title:TITLE+" - latest backup",textContent:toCsv(rows),contentMimeType:"text/csv"};if(fid)args.parentId=fid;
+      const r=await mcp.callTool("Google Drive","create_file",args,{cache:false});const f=fileUrl(pl(r));const prev=autoInfo&&autoInfo.fileId;
+      if(prev&&f.id&&prev!==f.id&&!(autoInfo.url||"").includes("spreadsheets")){try{await mcp.callTool("Google Drive","trash_file",{fileId:prev},{cache:false})}catch(e){}}
+      autoInfo={fileId:f.id||null,url:f.url,at:new Date().toISOString(),by,days:rows.length}}
+    syncFail=false;renderAutoLast();if(db&&canWrite){try{await db.doc("meta/autobackup").set(autoInfo)}catch(e){}}
+    note.textContent=" Synced to Google "+(sid?"Sheet":"Drive")+"."}
+  catch(e){setSync("fail");note.style.color="var(--warn)";note.textContent=" Saved in the log, but the sync didn't complete: "+mcpErr(e,sid?"Google Sheets":"Google Drive","save the copy")}
+  finally{autoBusy=false}
+}
+async function runBackup(msg,btn){
+  const rows=wideRows();if(!rows.length){msg.className="msg";msg.textContent="There are no readings to back up yet.";return}
+  const fid=folderId($("#bkFolder").value);if(fid===false){msg.className="msg err";msg.textContent="The folder link in System Settings isn't a Google Drive folder link.";return}
+  if(!await getMcp()){msg.className="msg err";msg.textContent="Cloud backup isn't available in this view. Open the page in Claude, or use Export CSV.";return}
+  const now=new Date(),title=TITLE+" backup "+dmy(isoOf(now))+" "+pad(now.getHours())+pad(now.getMinutes());
+  const args={title,textContent:toCsv(rows),contentMimeType:"text/csv"};if(fid)args.parentId=fid;
+  btn.disabled=true;msg.className="msg";msg.textContent="Saving backup to Google Drive…";
+  try{const r=await mcp.callTool("Google Drive","create_file",args,{cache:false});const f=fileUrl(pl(r));
+    msg.className="msg good";msg.textContent="Backup saved: "+title+" ("+rows.length+" days). ";if(f.url)msg.append(el("a",{href:f.url,target:"_blank",rel:"noopener",text:"Open in Google Drive"}));
+    lastBackup={at:now.toISOString(),by:$("#f_by").value.trim()||ls.get("pm_by")||null,days:rows.length,title,url:f.url};renderLastBackup();if(db&&canWrite){try{await db.doc("meta/backup").set(lastBackup)}catch(e){}}}
+  catch(e){const c=e&&e.code;msg.className="msg err";msg.textContent=(c==="server_unavailable"||c==="upstream_error")?"Google Drive didn't confirm the backup. Check your Drive before trying again, so you don't get two copies.":mcpErr(e,"Google Drive","create the file")}
+  finally{btn.disabled=false}
+}
+
+/* ---------- multipliers ---------- */
+function renderMult(){const g=$("#multGrid");if(g.childElementCount){METERS.forEach(m=>{const i=$("#mu_"+m.id);if(document.activeElement!==i)i.value=mult(m.id)});return}
+  METERS.forEach(m=>g.append(el("div",{class:"field"},el("label",{for:"mu_"+m.id,text:m.name+" ("+m.id+")"}),el("input",{type:"number",id:"mu_"+m.id,min:"0",step:"any",value:String(mult(m.id))}))))}
+async function saveMult(){const msg=$("#multMsg");const next={};for(const m of METERS){const v=Number($("#mu_"+m.id).value);if(!(v>0)){msg.className="msg err";msg.textContent=m.name+": multiplier must be above 0.";return}next[m.id]=v}
+  if(!db){msg.className="msg err";msg.textContent="Not connected to the shared log.";return}
+  try{await db.doc("config/multipliers").set(next);msg.className="msg good";msg.textContent="Multipliers saved. Usage figures are recalculated."}catch(e){msg.className="msg err";msg.textContent="Couldn't save: "+dbErr(e)}}
+
+/* ---------- trends ---------- */
+let TRP=null;
+function trPeriod(){
+  if($("#t_range").value==="custom"){
+    const pd=v=>{const m=String(v||"").trim().match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})$/);if(!m)return null;let y=+m[3];if(y<100)y+=2000;const d=+m[1],mo=+m[2];const dt=new Date(y,mo-1,d);if(dt.getMonth()!==mo-1||dt.getDate()!==d)return null;return y+"-"+pad(mo)+"-"+pad(d)};
+    const fv=$("#t_from").value.trim(),tv=$("#t_to").value.trim(),f=pd(fv),t=pd(tv);
+    if((fv&&!f)||(tv&&!t))return{err:["Date not recognised","Type the dates as dd/mm/yyyy, e.g. 01/10/2026."]};
+    if(f)$("#t_from").value=dmy(f).replace(/-/g,"/");if(t)$("#t_to").value=dmy(t).replace(/-/g,"/");
+    if(!f||!t)return{err:["Choose a From and To date","Pick both dates to see the charts for that period."]};
+    if(f>t)return{err:["From date is after To date","Check the dates and try again."]};
+    return{s0:f,e0:t,start:new Date(f+"T00:00:00"),end:new Date(t+"T00:00:00")}}
+  const days=+$("#t_range").value;const end=new Date();end.setHours(0,0,0,0);const start=new Date(end);start.setDate(start.getDate()-(days-1));
+  return{s0:isoOf(start),e0:isoOf(end),start,end};
+}
+const trSize=()=>trendSub!=="all"&&!isPhone()?{W:900,H:220}:{};
+function renderTrends(){
+  TRP=null;const host=$("#trendBody");host.textContent="";const P=trPeriod();
+  if(P.err){host.append(el("div",{class:"empty"},el("b",{text:P.err[0]}),P.err[1]));return}
+  TRP=P;const grid=el("div",{class:trendSub==="all"?"charts":"charts one"});let any=false;
+  {const c=$("#tCur");c.textContent="";c.append("Viewing: ",el("b",{style:"color:var(--title);font-size:15px",text:trendSub==="all"?"All meters":mName(trendSub)+" ("+trendSub+")"}))}
+  trendMeters().forEach(m=>{const pts=usePts(m.id,P.s0,P.e0);if(pts.length)any=true;const tot=series(m.id).filter(r=>r.used!=null&&r.date>=P.s0&&r.date<=P.e0).reduce((a,r)=>a+r.used,0);
+    const card=el("div",{class:"chart"},el("div",{class:"chart-h"},el("span",{class:"t",text:m.name+" ("+m.id+")"}),el("span",{class:"v",text:pts.length?"Total "+nf(tot,0)+" kWh":""})));
+    card.append(el("div",{class:"ct",text:"Daily consumption (kWh/day)"}),...chartSvg(pts,P.start,P.end,"kWh",{...trSize(),type:"bar",label:m.name+" daily consumption"}));
+    card.append(el("div",{class:"ct",text:"Cumulative reading (kWh register)"}),...chartSvg(regPts(m.id,P.s0,P.e0),P.start,P.end,"kWh",{...trSize(),type:"line",label:m.name+" cumulative reading"}));grid.append(card)});
+  if(!any)host.append(el("div",{class:"empty"},el("b",{text:"No usage in this period"}),"Charts fill in once two readings in a row are saved for a meter."));
+  host.append(grid);
+}
+
+/* ---------- monthly report (paper-form layout) ---------- */
+const RPT_CSS=`.rp{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px}
+.rp .rp-co{display:flex;flex-direction:row;align-items:center;gap:10px;margin-bottom:6px}.rp .rp-co img{height:44px;width:auto}.rp .rp-cn{display:flex;flex-direction:column;justify-content:center;height:44px}.rp .rp-cn b{font-size:17px;line-height:24px;font-weight:700;color:#111}.rp .rp-cn span{font-size:12px;line-height:20px;font-weight:600;color:#555}
+.rp table{border-collapse:collapse;width:100%;min-width:720px}.rp td,.rp th{border:1px solid #333;padding:3px 5px;text-align:center;font-weight:400;height:18px;color:#111;background:#fff;position:static;font-size:11px;white-space:normal}
+.rp th{font-weight:700;background:#f2f2f2}.rp td.l{text-align:left}.rp .red{color:#c00;font-weight:700}.rp td.nt{font-size:9.5px;text-align:left;color:#444}
+.rp .ttl{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border-bottom:2px solid #111;padding:4px 0 6px;margin:2px 0 8px;font-size:15px;font-weight:700;letter-spacing:.02em}.rp .ttl span:last-child{font-size:12px;font-weight:400}
+.rp .rp-foot{margin-top:28px;display:grid;grid-template-columns:max-content 300px;justify-content:start;align-items:end;gap:22px 12px;font-size:12px}.rp .ln{border-bottom:1px solid #333;height:34px}`;
+function rptDays(m){const[y,mo]=m.split("-").map(Number);const n=new Date(y,mo,0).getDate();return Array.from({length:n},(_,i)=>m+"-"+pad(i+1))}
+const RPT_T={read:"ELECTRICAL PANEL POWER METER DAILY READING (kWh)",use:"ELECTRICAL PANEL DAILY ELECTRICITY CONSUMPTION (kWh)"};
+function buildReport(type,m){
+  const logo=($(".logo")||{}).src||"";const mon=monthName(m);const U=useMap();
+  let h='<div class="rp"><div class="rp-co">'+(logo?'<img src="'+logo+'" alt="Lam Soon">':"")+'<div class="rp-cn"><b>'+CO_NAME+'</b><span>(TELOK PANGLIMA GARANG FACTORY)</span></div></div>';
+  h+='<div class="ttl"><span>'+RPT_T[type]+'</span><span>Month: <b>'+esc(mon)+'</b></span></div>';
+  h+='<table><tr><th rowspan="2" style="width:11%">Date</th><th rowspan="2" style="width:6%">Day</th>'+METERS.map(x=>'<th>'+esc(x.id)+'</th>').join("")+'<th rowspan="2" style="width:16%">'+(type==="read"?"Remarks":"Recorded by")+'</th></tr><tr>'+METERS.map(x=>'<th>'+esc(x.name)+'</th>').join("")+'</tr>';
+  const tot={};MID.forEach(id=>tot[id]=0);
+  for(const dt of rptDays(m)){const day=BYDATE.get(dt)||{};const any=MID.map(id=>day[id]).find(Boolean);
+    h+='<tr><td>'+dmy(dt)+'</td><td>'+dayName(dt)+'</td>';
+    MID.forEach(id=>{const r=day[id];if(!r){h+='<td></td>';return}
+      if(type==="read")h+='<td'+(realNote(r)?' class="red"':'')+'>'+esc(fReg(r.kwh))+'</td>';
+      else{const u=U[id][dt];if(u&&u.used!=null){tot[id]+=u.used;h+='<td'+(u.used<0?' class="red"':'')+'>'+esc(nf(u.used,0))+(u.gap>1?' <span style="font-size:9px">('+u.gap+'d)</span>':'')+'</td>'}else h+='<td></td>'}});
+    if(type==="read")h+='<td class="nt">'+esc(MID.filter(id=>realNote(day[id])).map(id=>id+": "+realNote(day[id])).join("; "))+'</td></tr>';
+    else h+='<td>'+esc(any&&any.recordedBy||"")+'</td></tr>'}
+  if(type==="use")h+='<tr><th colspan="2">Total / month</th>'+MID.map(id=>'<th>'+nf(tot[id],0)+'</th>').join("")+'<th></th></tr>';
+  h+='</table>';
+  if(type==="use")h+='<div style="margin-top:6px;font-size:10px;color:#444">Usage = (register − previous register) × CT/PT multiplier ('+MID.map(id=>id+" ×"+mult(id)).join(", ")+'). (Nd) = covers N days since the previous reading.</div>';
+  else h+='<div style="margin-top:6px;font-size:10px;color:#444">Values in red carry a note (see Remarks).</div>';
+  h+='<div class="rp-foot"><span>Verified By :</span><span class="ln"></span><span>Name :</span><span class="ln"></span><span>Date :</span><span class="ln"></span></div>';
+  h+='<div style="margin-top:8px;font-size:9px;color:#666">'+dmy(isoToday())+' '+nowHM()+' · '+RPT_T[type]+'</div></div>';
+  return h;
+}
+function renderReport(){const m=$("#h_month").value||isoToday().slice(0,7);$("#rptPaper").innerHTML="<style>"+RPT_CSS+"</style>"+buildReport($("#rptType").value,m)}
+let pdfLibs=null;
+function loadScript(src){return new Promise((res,rej)=>{const sc=document.createElement("script");sc.src=src;sc.onload=res;sc.onerror=()=>rej(new Error("load"));document.head.appendChild(sc)})}
+function getPdfLibs(){if(!pdfLibs)pdfLibs=(async()=>{
+  if(!window.html2canvas)await loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+  if(!(window.jspdf&&window.jspdf.jsPDF))await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+  return{h2c:window.html2canvas,jsPDF:window.jspdf.jsPDF}})().catch(e=>{pdfLibs=null;throw e});return pdfLibs}
+async function snap(html,width){const{h2c}=await getPdfLibs();const box=document.createElement("div");box.style.cssText="position:fixed;left:-12000px;top:0;width:"+width+"px;background:#ffffff;color:#111111;padding:0;z-index:-1";box.innerHTML=html;document.body.appendChild(box);
+  try{const imgs=[...box.querySelectorAll("img")];await Promise.all(imgs.map(i=>i.complete?0:new Promise(z=>{i.onload=i.onerror=z})));const bw=Math.max(width,Math.ceil(box.scrollWidth));box.style.width=bw+"px";
+    return await h2c(box,{scale:2,backgroundColor:"#ffffff",useCORS:true,logging:false,width:bw,windowWidth:bw+40})}finally{box.remove()}}
+async function makeReportPdf(){
+  const m=$("#h_month").value||isoToday().slice(0,7),t=$("#rptType").value;const{jsPDF}=await getPdfLibs();
+  const cv=await snap("<style>"+RPT_CSS+".rp table{min-width:0!important}</style>"+buildReport(t,m),900);
+  const doc=new jsPDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight(),mg=28;
+  const k=Math.min((pw-2*mg)/cv.width,(ph-2*mg)/cv.height);doc.addImage(cv.toDataURL("image/jpeg",0.9),"JPEG",(pw-cv.width*k)/2,mg,cv.width*k,cv.height*k,undefined,"FAST");
+  const title=(t==="read"?"Power Meter Daily Reading":"Daily Electricity Consumption")+" - "+monthName(m);
+  doc.setProperties({title,subject:title,creator:TITLE,author:"Lam Soon Edible Oils Sdn. Bhd."});
+  return{doc,title,file:title.replace(/[^A-Za-z0-9 -]/g,"").replace(/\s+/g,"-")+".pdf"};
+}
+const pdfErr=e=>e&&e.message==="load"?"Couldn't load the PDF tools. Check the internet connection and try again.":"Couldn't create the PDF ("+((e&&(e.code||e.message))||"error")+").";
+
+/* ---------- trends PDF ---------- */
+function trChartSvg(pts,D,type){
+  const bar=type==="bar";const W=360,H=118,ml=bar?44:56,mr=8,mt=10,mb=18;
+  let s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" font-family="Arial" font-size="10"><rect width="'+W+'" height="'+H+'" fill="#ffffff"/>';
+  if(!pts.length)return s+'<text x="'+W/2+'" y="'+H/2+'" text-anchor="middle" fill="#888">No readings in this period</text></svg>';
+  const vs=pts.map(q=>q.v);let lo,hi;
+  if(bar){lo=Math.min(0,...vs);hi=Math.max(0,...vs);if(hi===lo)hi=lo+1;hi+=(hi-lo)*0.08}else{lo=Math.min(...vs);hi=Math.max(...vs);if(hi===lo){hi+=1;lo-=1}const pv=(hi-lo)*0.08;hi+=pv;lo-=pv}
+  const DAY=864e5,s0=D.start.getTime()-DAY/2,span=(D.end.getTime()+DAY/2)-s0,pw=W-ml-mr,dw=pw*DAY/span;
+  const x=d=>ml+((new Date(d+"T00:00:00").getTime()-s0)/span)*pw,y=v=>mt+(1-(v-lo)/(hi-lo))*(H-mt-mb);
+  for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3,yy=y(v);s+='<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+yy.toFixed(1)+'" y2="'+yy.toFixed(1)+'" stroke="#d6e0dd"/><text x="'+(ml-5)+'" y="'+(yy+3).toFixed(1)+'" text-anchor="end" fill="#5b6d69">'+Math.round(v).toLocaleString("en-GB")+'</text>'}
+  s+='<text x="'+ml+'" y="'+(H-4)+'" fill="#5b6d69">'+dmy(D.s0).slice(0,5)+'</text><text x="'+(W-mr)+'" y="'+(H-4)+'" text-anchor="end" fill="#5b6d69">'+dmy(D.e0).slice(0,5)+'</text>';
+  if(bar){const y0=y(0);pts.forEach(q=>{const cx=x(q.date),r=cx+dw/2,l=Math.max(ml,cx-dw/2-(q.gap>1?(q.gap-1)*dw:0)),ins=Math.min(1.5,(r-l)*0.15);const top=Math.min(y(q.v),y0),h=Math.max(1,Math.abs(y(q.v)-y0));
+      s+='<rect x="'+(l+ins).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+Math.max(1,r-l-2*ins).toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+(q.v<0?"#b3261e":"#0d6e63")+'" fill-opacity="'+(q.gap>1?0.55:0.9)+'"/>'});
+    const avg=vs.reduce((a,v)=>a+v,0)/vs.length,ya=y(avg);s+='<line x1="'+ml+'" x2="'+(W-mr)+'" y1="'+ya.toFixed(1)+'" y2="'+ya.toFixed(1)+'" stroke="#9a6300" stroke-width="1.2" stroke-dasharray="4 3"/><text x="'+(W-mr)+'" y="'+(ya-3).toFixed(1)+'" text-anchor="end" fill="#9a6300">avg '+Math.round(avg).toLocaleString("en-GB")+'</text>'}
+  else{const d="M"+pts.map(q=>x(q.date).toFixed(1)+" "+y(q.v).toFixed(1)).join(" L");s+='<path d="'+d+'" fill="none" stroke="#0b6bcb" stroke-width="1.8" stroke-linejoin="round"/>';pts.forEach(q=>{s+='<circle cx="'+x(q.date).toFixed(1)+'" cy="'+y(q.v).toFixed(1)+'" r="2" fill="#0b6bcb"/>'})}
+  return s+'</svg>';
+}
+const TR_CSS='.trp{width:794px;box-sizing:border-box;padding:30px 32px;background:#fff}.trp .ttl{margin-bottom:12px}.trp .cg{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}.trp .cc{border:1px solid #c9d1d3;border-radius:6px;padding:6px 8px}.trp .cc .h{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700;margin-bottom:2px}.trp .cc .h span:last-child{font-weight:400}.trp .cc img{width:100%;height:auto;display:block}.trp .cc .cl{font-size:9.5px;color:#555;margin-top:3px}.trp .pf{margin-top:14px;font-size:9px;color:#666;display:flex;justify-content:space-between}';
+function trPdfPage(D){
+  const logo=($(".logo")||{}).src||"";const period=dmy(D.s0).replace(/-/g,"/")+" to "+dmy(D.e0).replace(/-/g,"/");const title="ELECTRICAL PANEL POWER METER TRENDS";
+  const cards=trendMeters().map(m=>{const pts=usePts(m.id,D.s0,D.e0);const tot=series(m.id).filter(r=>r.used!=null&&r.date>=D.s0&&r.date<=D.e0).reduce((a,r)=>a+r.used,0);
+    return'<div class="cc"><div class="h"><span>'+esc(m.name+" ("+m.id+")")+'</span><span>'+(pts.length?"Total "+esc(nf(tot,0))+" kWh":"")+'</span></div><div class="cl">Daily consumption (kWh/day)</div><img alt="" src="data:image/svg+xml;charset=utf-8,'+encodeURIComponent(trChartSvg(pts,D,"bar"))+'"><div class="cl">Cumulative reading (kWh register)</div><img alt="" src="data:image/svg+xml;charset=utf-8,'+encodeURIComponent(trChartSvg(regPts(m.id,D.s0,D.e0),D,"line"))+'"></div>'}).join("");
+  return'<div class="rp trp"><div class="rp-co">'+(logo?'<img src="'+logo+'" alt="Lam Soon">':"")+'<div class="rp-cn"><b>'+CO_NAME+'</b><span>(TELOK PANGLIMA GARANG FACTORY)</span></div></div><div class="ttl"><span>'+title+'</span><span>Period: <b>'+esc(period)+'</b></span></div><div class="cg"'+(trendSub==="all"?"":' style="grid-template-columns:1fr"')+'>'+cards+'</div><div class="pf"><span>'+esc(dmy(isoToday())+" "+nowHM()+" · "+title)+'</span><span>Page 1 of 1</span></div></div>';
+}
+let trY=0;
+function trHidePrev(){$("#trPrev").hidden=true;$("#trPrevBody").textContent="";$("#trendBody").hidden=false;window.scrollTo({top:trY,behavior:"smooth"})}
+
+/* ---------- contacts ---------- */
+let CONTACTS=[],ctEdit=null;
+function renderContacts(){
+  const host=$("#ctBody");host.textContent="";
+  if(!CONTACTS.length){host.append(el("div",{class:"empty",style:"grid-column:1/-1"},el("b",{text:"No contacts yet"}),"Tap Add contact to save the electrical contractor, TNB, meter supplier or other people to call about the panel meters."));return}
+  const copyBtn=(txt,v)=>{const b=el("button",{type:"button",class:"btn sm ct-copy",text:"Copy"});b.addEventListener("click",()=>{const done=()=>{b.textContent="Copied";setTimeout(()=>b.textContent="Copy",1500)};
+    const selIt=()=>{const r=document.createRange();r.selectNodeContents(v);const g=getSelection();g.removeAllRanges();g.addRange(r);b.textContent="Selected – copy it now"};
+    try{navigator.clipboard.writeText(txt).then(done,selIt)}catch(e){selIt()}});return b};
+  const ord=c=>c.order??999;
+  const groups=new Map();
+  [...CONTACTS].sort((a,b)=>ord(a)-ord(b)||String(a.name||"").localeCompare(String(b.name||""))).forEach(c=>{const k=(c.company||"Other contacts").trim();if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c)});
+  [...groups.entries()].sort((a,b)=>Math.min(...a[1].map(ord))-Math.min(...b[1].map(ord))||a[0].localeCompare(b[0])).forEach(([co,list])=>{
+    const card=el("div",{class:"ct-card"},el("div",{class:"ct-co"},el("h2",{text:co}),el("span",{class:"pill",text:list.length+" contact"+(list.length>1?"s":"")})));
+    list.forEach(c=>{const pr=el("div",{class:"ct-person"});
+      pr.append(el("div",{class:"ct-ph"},el("div",{},el("div",{class:"ct-nm",text:c.name||"—"}),c.role?el("div",{class:"ct-role",text:c.role}):null)));
+      if(c.phone){const tel=String(c.phone).replace(/[^0-9+]/g,"");const v=el("a",{class:"v ct-tel",href:"tel:"+(tel.startsWith("0")?"+6"+tel:tel),text:c.phone});pr.append(el("div",{class:"ct-row"},el("span",{class:"k",text:"Phone"}),v,copyBtn(c.phone,v)))}
+      if(c.email){const v=el("span",{class:"v",text:c.email});pr.append(el("div",{class:"ct-row"},el("span",{class:"k",text:"Email"}),v,copyBtn(c.email,v)))}
+      if(c.note)pr.append(el("div",{class:"sub",text:c.note}));
+      if(false){const f=el("div",{class:"ct-foot"});const draw=()=>{f.textContent="";const eb=el("button",{type:"button",class:"btn sm ct-copy",text:"Edit"});eb.addEventListener("click",()=>openCtForm(c));
+        const dl=el("button",{type:"button",class:"btn sm ct-copy",style:"color:var(--bad)",text:"Delete"});
+        dl.addEventListener("click",()=>{f.textContent="";const yes=el("button",{type:"button",class:"btn sm ct-copy",style:"background:var(--bad);color:#fff;border-color:var(--bad)",text:"Yes, delete"}),no=el("button",{type:"button",class:"btn sm ct-copy",text:"Cancel"});
+          f.append(el("span",{class:"msg err",text:"Delete "+(c.name||"this contact")+"?"}),yes,no);no.addEventListener("click",draw);
+          yes.addEventListener("click",async()=>{yes.disabled=true;try{await db.collection("contacts").doc(c.id).delete();$("#ctMsg").className="msg good";$("#ctMsg").textContent="Contact deleted."}catch(e){$("#ctMsg").className="msg err";$("#ctMsg").textContent="Couldn't delete: "+dbErr(e);draw()}})});
+        f.append(eb,dl)};draw();pr.querySelector(".ct-ph").append(f)}
+      card.append(pr)});
+    host.append(card)});
+}
+function openCtForm(c){ctEdit=c?c.id:null;$("#ctFormTitle").textContent=c?"Edit contact":"Add contact";
+  [["role","ct_role"],["company","ct_co"],["name","ct_name"],["phone","ct_phone"],["email","ct_email"],["note","ct_note"]].forEach(([k,id])=>$("#"+id).value=c&&c[k]||"");
+  $("#ctFormMsg").textContent="";$("#ctForm").hidden=false;$("#ct_role").focus();$("#ctForm").scrollIntoView({block:"nearest",behavior:"smooth"})}
+async function saveCt(e){e.preventDefault();const m=$("#ctFormMsg");
+  const prevOrder=ctEdit?(CONTACTS.find(x=>x.id===ctEdit)||{}).order:undefined;
+  const b={...(prevOrder!=null?{order:prevOrder}:{}),role:$("#ct_role").value.trim(),company:$("#ct_co").value.trim(),name:$("#ct_name").value.trim(),phone:$("#ct_phone").value.trim(),email:$("#ct_email").value.trim(),note:$("#ct_note").value.trim(),updatedAt:new Date().toISOString()};
+  if(!b.company&&!b.name){m.className="msg err";m.textContent="Enter a company or a contact person.";return}
+  if(!b.phone&&!b.email){m.className="msg err";m.textContent="Enter a phone number or an email.";return}
+  if(b.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email)){m.className="msg err";m.textContent="That email doesn't look right.";return}
+  if(!db){m.className="msg err";m.textContent="Not connected to the shared log.";return}
+  try{await db.collection("contacts").doc(ctEdit||("c"+Date.now().toString(36))).set(b);$("#ctForm").hidden=true;$("#ctMsg").className="msg good";$("#ctMsg").textContent=ctEdit?"Contact updated.":"Contact added.";ctEdit=null}
+  catch(err){m.className="msg err";m.textContent="Couldn't save: "+dbErr(err)}}
+
+/* ---------- Supabase ---------- */
+const SB_URL="https://vnlbdlkbkvjeaaauaxbl.supabase.co";
+const SB_KEY="sb_publishable_MR-mKUuw_SRt_algf_x7FQ_-4Np77YK";
+const sb=window.supabase?window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null;
+const numN=v=>v==null||v===""?null:Number(v);
+const fromRow=r=>({id:r.id,meter:r.meter,date:r.reading_date,time:r.reading_time,kwh:Number(r.kwh),kw:numN(r.max_demand_kw),pf:numN(r.power_factor),remarks:r.remarks,recordedBy:r.recorded_by,recordedByEmail:r.recorded_by_email,source:r.source,updatedAt:r.updated_at});
+const toRow=(id,b)=>({id,meter:b.meter,reading_date:b.date,reading_time:b.time||null,kwh:b.kwh,max_demand_kw:b.kw??null,power_factor:b.pf??null,remarks:b.remarks||null,recorded_by:b.recordedBy||null,recorded_by_email:b.recordedByEmail||null,source:b.source||null,updated_at:b.updatedAt||new Date().toISOString()});
+const chk=r=>{if(r.error)throw r.error;return r.data};
+let reloadT=null;const scheduleReload=()=>{clearTimeout(reloadT);reloadT=setTimeout(loadAll,400)};
+const SB_DB={
+  collection:c=>({doc:id=>({
+    set:async b=>{
+      if(c==="readings")chk(await sb.from("readings").upsert(toRow(id,b)));
+      else if(c==="contacts")chk(await sb.from("contacts").upsert({id,sort_order:b.order??null,company:b.company||null,role:b.role||null,name:b.name||null,phone:b.phone||null,email:b.email||null,note:b.note||null,updated_at:b.updatedAt||new Date().toISOString()}));
+      scheduleReload()},
+    delete:async()=>{chk(await sb.from(c).delete().eq("id",id));scheduleReload()}})}),
+  doc:p=>({set:async b=>{if(p!=="config/multipliers")return;for(const[k,v]of Object.entries(b))chk(await sb.from("meters").update({multiplier:v}).eq("id",k));scheduleReload()}})
+};
+let loading=false;
+async function loadAll(){
+  if(!SESSION||loading)return;loading=true;
+  try{
+    const all=[];for(let from=0;;from+=1000){const d=chk(await sb.from("readings").select("*").order("reading_date",{ascending:true}).order("meter").range(from,from+999));all.push(...d);if(d.length<1000)break}
+    const [mt,ct,st]=await Promise.all([sb.from("meters").select("*"),sb.from("contacts").select("*"),sb.from("staff").select("*").order("name")]);
+    MID.forEach(id=>RAW[id]=[]);all.map(fromRow).forEach(r=>{if(RAW[r.meter]&&isFinite(r.kwh)&&r.date)RAW[r.meter].push(r)});
+    MULT={};(chk(mt)||[]).forEach(m=>MULT[m.id]=Number(m.multiplier));
+    CONTACTS=(chk(ct)||[]).map(c=>({id:c.id,order:c.sort_order,company:c.company,role:c.role,name:c.name,phone:c.phone,email:c.email,note:c.note}));
+    const staffRows=chk(st)||[];const order=["Rajah","Jamal","Pauzi","Bikesh","Dhan","Nizam","Tan JS","Admin"];
+    STAFF=staffRows.map(x=>({name:x.name,email:x.email})).sort((a,b)=>((order.indexOf(a.name)+1)||99)-((order.indexOf(b.name)+1)||99));fillStaff();
+    const me=STAFF.find(x=>(x.email||"").toLowerCase()===(SESSION.user.email||"").toLowerCase());
+    SESSION_NAME=me?me.name:SESSION.user.email;canWrite=!!me;
+    if(!me)$("#connState").textContent="Signed in as "+SESSION.user.email+", which isn't on the staff list. Ask the Admin to add you.";else $("#connState").textContent="";
+    dbOk=true;updateNet();renderAll();if(curTab==="contact")renderContacts();
+  }catch(e){dbOk=false;updateNet();$("#connState").textContent="Couldn't load the log ("+(e.message||e.code||"error")+"). Reload to try again."}
+  finally{loading=false}
+}
+let chan=null;
+async function onSession(session){
+  const was=SESSION&&SESSION.user.id;SESSION=session||null;
+  if(SESSION&&was===SESSION.user.id)return;
+  closeSignIn();
+  if(!SESSION){db=null;canWrite=false;SESSION_NAME="";dbOk=false;MID.forEach(id=>RAW[id]=[]);CONTACTS=[];STAFF=[];if(chan){sb.removeChannel(chan);chan=null}
+    updateNet();renderAll();renderGate();$("#saveBtn").disabled=true;return}
+  db=SB_DB;canWrite=true;$("#saveBtn").disabled=false;renderGate();
+  if(location.hash.includes("access_token")||location.search.includes("code="))history.replaceState(null,"",location.pathname);
+  await loadAll();
+  if(!fillForm.done&&canWrite){fillForm.done=1}
+  if(!dirty&&!$("#f_by").value&&SESSION_NAME)setBy(SESSION_NAME);
+  if(!chan)chan=sb.channel("pm-log").on("postgres_changes",{event:"*",schema:"public",table:"readings"},scheduleReload).on("postgres_changes",{event:"*",schema:"public",table:"contacts"},scheduleReload).on("postgres_changes",{event:"*",schema:"public",table:"meters"},scheduleReload).subscribe();
+}
+function renderGate(){
+  let g=$("#gate");
+  if(SESSION){if(g)g.remove();return}
+  if(!g){g=el("div",{class:"gate",id:"gate"},el("b",{text:"Sign in to view and record readings"}),el("div",{class:"sub",text:"Only registered staff can open the log. Use the Sign in button, enter your work email and open the link we send you."}));
+    const b=el("button",{type:"button",class:"btn primary",text:"Sign in"});b.addEventListener("click",e=>{e.stopPropagation();openSignIn($("#signBtn")||b)});g.append(b);
+    $("nav.tabs").after(g)}
+}
+
+/* ---------- tabs & view mode ---------- */
+let curTab=null;const fromTab={};
+const isPhone=()=>document.body.classList.contains("vm-mobile");
+function selectTab(t){
+  if(t==="settings")t="dash";
+  if(curTab&&curTab!==t)fromTab[t]={tab:curTab,y:window.scrollY};curTab=t;
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===t)));
+  ["dash","entry","history","trends","settings","contact"].forEach(x=>{$("#pane-"+x).hidden=x!==t});
+  document.querySelectorAll("#bnav button").forEach(b=>b.classList.toggle("on",b.dataset.go===t));
+  document.body.classList.toggle("dash-on",t==="dash");
+  if(t==="dash")renderDash();
+  if(t==="history"){renderMonthSelect();renderHistory();if(!$("#rptPanel").hidden)renderReport()}
+  if(t==="trends")renderTrends();
+  if(t==="contact")renderContacts();
+  ls.set("pm_tab_"+(isPhone()?"m":"p"),t);
+}
+function goBack(t){const b=fromTab[t];fromTab[t]=null;selectTab(b&&b.tab&&b.tab!==t?b.tab:"dash");setTimeout(()=>window.scrollTo({top:b?b.y:0,behavior:"smooth"}),0)}
+function setVM(m,save){document.body.classList.toggle("vm-mobile",m==="m");document.body.classList.toggle("vm-pc",m==="p");
+  [["vmM","m"],["vmP","p"]].forEach(([id,v])=>{const b=$("#"+id);b.classList.toggle("on",m===v);b.setAttribute("aria-pressed",String(m===v))});
+  if(save){ls.set("pm_vm",m);selectTab(ls.get("pm_tab_"+m)||"dash");window.scrollTo(0,0)}else if(curTab==="dash")renderDash()}
+
+/* ---------- render all ---------- */
+function renderAll(){
+  rebuild();renderStrip();
+  if(!dirty)fillForm($("#f_date").value);else refreshPills();
+  if(curTab==="dash")renderDash();
+  if(curTab==="history"){renderMonthSelect();renderHistory();if(!$("#rptPanel").hidden)renderReport()}
+  if(curTab==="trends"&&$("#trPrev").hidden)renderTrends();
+  if(curTab==="settings")renderMult();
+}
+function applyWrite(){["#saveBtn","#impBtn","#ctAdd","#multSave","#syncNow","#bkGo","#bkHist"].forEach(s=>$(s).disabled=!canWrite);
+  if(!canWrite){$("#connState").textContent="View-only access: you can see readings but not change them."}}
+
+/* ---------- wire up ---------- */
+function fillStaff(){const s=$("#f_by"),cur=s.value;s.textContent="";s.append(el("option",{value:"",text:"Select name"}));STAFF.forEach(x=>s.append(el("option",{value:x.name,text:x.name})));setBy(cur)}
+function setBy(v){const s=$("#f_by");v=v||"";if(v&&![...s.options].some(o=>o.value===v))s.append(el("option",{value:v,text:v}));s.value=v}
+buildForm();
+$("#f_date").value=isoToday();$("#f_time").value=nowHM();
+$("#f_date").addEventListener("change",()=>{dirty=false;pending=null;fillForm($("#f_date").value)});
+$("#saveBtn").addEventListener("click",save);
+$("#signPop").addEventListener("submit",async e=>{e.preventDefault();const m=$("#signMsg"),em=$("#signName").value.trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){m.className="msg err";m.textContent="Enter your email address.";return}
+  ls.set("pm_email",em);$("#signGo").disabled=true;m.className="msg";m.textContent="Sending…";
+  const{error}=await sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.origin+location.pathname,shouldCreateUser:false}});
+  $("#signGo").disabled=false;
+  if(error){m.className="msg err";m.textContent=/signups not allowed|not found|Signups/i.test(error.message)?"This email isn't registered for the log. Ask the Admin to add you.":/rate|seconds/i.test(error.message)?"Too many requests. Wait a minute and try again.":"Couldn't send the link: "+error.message;return}
+  m.className="msg good";m.textContent="Link sent to "+em+". Open it on this device to sign in."});
+$("#signCancel").addEventListener("click",closeSignIn);
+document.addEventListener("click",e=>{if(!$("#signPop").hidden&&!e.target.closest("#signPop")&&!e.target.closest("#signBtn"))closeSignIn()});
+window.addEventListener("scroll",closeSignIn,{passive:true});
+$("#eSwitch").addEventListener("click",e=>openEntrySheet(e.currentTarget));
+$("#tSwitch").addEventListener("click",e=>openTrendSheet(e.currentTarget));
+$("#clearBtn").addEventListener("click",()=>{METERS.forEach(m=>["k_","kw_","pf_","n_"].forEach(p=>$("#"+p+m.id).value=""));$("#f_time").value=nowHM();dirty=false;pending=null;refreshPills();$("#saveMsg").textContent=""});
+document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{if(b.dataset.tab==="entry"){openEntrySheet(b);return}if(b.dataset.tab==="trends"){openTrendSheet(b);return}closeEntrySheet();closeTrendSheet();selectTab(b.dataset.tab)}));
+document.querySelectorAll("#bnav button").forEach(b=>b.addEventListener("click",()=>{const g=b.dataset.go;if(g==="entry"){openEntrySheet(b);return}if(g==="trends"){openTrendSheet(b);return}closeEntrySheet();closeTrendSheet();selectTab(g);window.scrollTo(0,0)}));
+$("#entryBack").addEventListener("click",()=>goBack("entry"));
+$("#histBack").addEventListener("click",()=>{$("#rptPanel").hidden=true;$("#rptBtn").setAttribute("aria-expanded","false");goBack("history")});
+$("#trendsBack").addEventListener("click",()=>{if(!$("#trPrev").hidden)trHidePrev();goBack("trends")});
+$("#h_month").addEventListener("change",()=>{renderHistory();if(!$("#rptPanel").hidden)renderReport()});
+document.querySelectorAll(".subtabs button").forEach(b=>b.addEventListener("click",()=>{histSub=b.dataset.sub;ls.set("pm_hsub",histSub);renderHistory()}));
+$("#csvBtn").addEventListener("click",exportCsv);
+$("#impBtn").addEventListener("click",()=>{const p=$("#impPanel");p.hidden=!p.hidden;$("#impBtn").setAttribute("aria-expanded",String(!p.hidden));if(p.hidden){resetImport();$("#impMsg").textContent=""}});
+$("#impFile").addEventListener("change",e=>{const f=e.target.files&&e.target.files[0];if(!f)return;if(f.size>5e6){$("#impMsg").className="msg err";$("#impMsg").textContent="That file is over 5 MB. Split it and try again.";return}
+  const r=new FileReader();r.onload=()=>showPreview(String(r.result),f.name);r.onerror=()=>{$("#impMsg").className="msg err";$("#impMsg").textContent="Couldn't read that file."};r.readAsText(f)});
+$("#impLoad").addEventListener("click",loadFromLink);
+$("#impNew").addEventListener("click",()=>runImport(false));
+$("#impAll").addEventListener("click",()=>runImport(true));
+$("#impCancel").addEventListener("click",()=>{resetImport();$("#impMsg").textContent=""});
+$("#bkHist").addEventListener("click",async()=>{if(await saveCfg()!==true){$("#csvMsg").className="msg err";$("#csvMsg").textContent="A link in System Settings isn't valid. Fix it there first.";return}runBackup($("#csvMsg"),$("#bkHist"))});
+$("#bkGo").addEventListener("click",async()=>{if(await saveCfg()!==true){$("#bkMsg").className="msg err";$("#bkMsg").textContent="Check the links above first.";return}runBackup($("#bkMsg"),$("#bkGo"))});
+$("#rptBtn").addEventListener("click",()=>{const p=$("#rptPanel");p.hidden=!p.hidden;$("#rptBtn").setAttribute("aria-expanded",String(!p.hidden));if(!p.hidden){renderReport();$("#rptMsg").textContent="";p.scrollIntoView({block:"nearest",behavior:"smooth"})}});
+$("#rptBack").addEventListener("click",()=>{$("#rptPanel").hidden=true;$("#rptBtn").setAttribute("aria-expanded","false");window.scrollTo({top:0,behavior:"smooth"})});
+$("#rptType").addEventListener("change",renderReport);
+$("#rptDl").addEventListener("click",async()=>{const msg=$("#rptMsg"),btn=$("#rptDl");if(!downloads){msg.className="msg err";msg.textContent="Downloads aren't available in this view.";return}
+  btn.disabled=true;msg.className="msg";msg.textContent="Creating PDF…";
+  try{const p=await makeReportPdf();msg.textContent="Saving PDF…";await downloads.save({filename:p.file,data:p.doc.output("blob")});msg.className="msg good";msg.textContent="PDF saved: "+p.file}
+  catch(e){if(e&&e.code==="declined"){msg.className="msg";msg.textContent="Download cancelled."}else{msg.className="msg err";msg.textContent=e&&e.code?"Couldn't save the PDF ("+e.code+").":pdfErr(e)}}finally{btn.disabled=false}});
+$("#rptDrive").addEventListener("click",async()=>{const msg=$("#rptMsg"),btn=$("#rptDrive");
+  if(!await getMcp()){msg.className="msg err";msg.textContent="Google Drive isn't available in this view. Use Download PDF instead.";return}
+  btn.disabled=true;msg.className="msg";msg.textContent="Creating PDF…";
+  try{const p=await makeReportPdf();const b64=p.doc.output("datauristring").split(",")[1];const fid=folderId(bkCfg?bkCfg.folder:$("#bkFolder").value);
+    const args={title:p.file,base64Content:b64,contentMimeType:"application/pdf",disableConversionToGoogleType:true};if(fid)args.parentId=fid;
+    msg.textContent="Saving PDF to Google Drive…";const r=await mcp.callTool("Google Drive","create_file",args,{cache:false});const f=fileUrl(pl(r));
+    msg.className="msg good";msg.textContent="PDF saved to Google Drive: "+p.file+" ";if(f.url)msg.append(el("a",{href:f.url,target:"_blank",rel:"noopener",text:"Open"}))}
+  catch(e){msg.className="msg err";msg.textContent=e&&e.code?mcpErr(e,"Google Drive","save the PDF"):pdfErr(e)}finally{btn.disabled=false}});
+$("#t_range").addEventListener("change",()=>{const c=$("#t_range").value==="custom";$("#t_fromF").hidden=$("#t_toF").hidden=!c;
+  if(c&&!$("#t_to").value){const t=new Date();$("#t_to").value=dmy(isoToday()).replace(/-/g,"/");t.setDate(t.getDate()-29);$("#t_from").value=pad(t.getDate())+"/"+pad(t.getMonth()+1)+"/"+t.getFullYear()}
+  if(!$("#trPrev").hidden)trHidePrev();renderTrends()});
+$("#t_from").addEventListener("change",renderTrends);$("#t_to").addEventListener("change",renderTrends);
+$("#trBack").addEventListener("click",trHidePrev);
+$("#trPdf").addEventListener("click",async()=>{const msg=$("#trMsg"),btn=$("#trPdf");
+  if(!downloads){msg.className="msg err";msg.textContent="Downloads aren't available in this view.";return}
+  const D=TRP;if(!D){msg.className="msg err";msg.textContent="Choose a valid period first.";return}
+  btn.disabled=true;msg.className="msg";msg.textContent="Creating PDF…";
+  try{const{jsPDF}=await getPdfLibs();const page=trPdfPage(D);const cv=await snap("<style>"+RPT_CSS+TR_CSS+"</style>"+page,794);
+    const doc=new jsPDF({orientation:"portrait",unit:"pt",format:"a4",compress:true});const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();const k=Math.min(pw/cv.width,ph/cv.height);
+    doc.addImage(cv.toDataURL("image/jpeg",0.92),"JPEG",(pw-cv.width*k)/2,0,cv.width*k,cv.height*k,undefined,"FAST");
+    trY=window.scrollY;const b=$("#trPrevBody");b.innerHTML="<style>"+RPT_CSS+TR_CSS+".trp-sc{max-width:100%;overflow-x:auto}.trp-sc .trp{border:1px solid #c9d1d3}</style><div class='trp-sc'>"+page+"</div>";$("#trPrev").hidden=false;$("#trendBody").hidden=true;
+    const file="Power-Meter-Trends-"+dmy(D.s0)+"-to-"+dmy(D.e0)+".pdf";doc.setProperties({title:"Power Meter Trends "+dmy(D.s0)+" to "+dmy(D.e0),creator:TITLE,author:"Lam Soon Edible Oils Sdn. Bhd."});
+    msg.textContent="Saving PDF…";await downloads.save({filename:file,data:doc.output("blob")});msg.className="msg good";msg.textContent="PDF saved: "+file}
+  catch(e){if(e&&e.code==="declined"){msg.className="msg";msg.textContent="Download cancelled."}else{msg.className="msg err";msg.textContent=e&&e.code?"Couldn't save the PDF ("+e.code+").":pdfErr(e)}}finally{btn.disabled=false}});
+$("#bkSheet").addEventListener("input",showSheetLink);
+$("#bkSheet").addEventListener("change",async()=>{const ok=await saveCfg(),m=$("#syncMsg");if(ok==="sheet"){m.className="msg err";m.textContent="That doesn't look like a Google Sheet link. It should contain /spreadsheets/d/ followed by the sheet ID."}else if(ok==="folder"){m.className="msg err";m.textContent="Check the Drive folder link below."}else{m.className="msg good";m.textContent=$("#bkSheet").value.trim()?"Google Sheet link saved. The next sync writes into this sheet.":"No Google Sheet set: syncs keep a CSV copy in Google Drive."}});
+$("#bkFolder").addEventListener("change",async()=>{const ok=await saveCfg(),m=$("#syncMsg");if(ok==="folder"){m.className="msg err";m.textContent="That doesn't look like a Google Drive folder link. It should contain /folders/ followed by the folder ID."}else{m.className="msg good";m.textContent="Folder saved."}});
+$("#bkAuto").addEventListener("change",async()=>{await saveCfg();$("#syncMsg").className="msg";$("#syncMsg").textContent=$("#bkAuto").checked?"Automatic sync is on.":"Automatic sync is off."});
+$("#syncNow").addEventListener("click",async()=>{const m=$("#syncMsg");m.className="msg";m.textContent="";if(!BYDATE.size){m.textContent="There are no readings to sync yet.";return}const r=await saveCfg();if(r!==true){m.className="msg err";m.textContent=r==="sheet"?"Check the Google Sheet link first.":"Check the folder link first.";return}$("#syncNow").disabled=true;await autoSync(m,true);$("#syncNow").disabled=!canWrite});
+$("#multSave").addEventListener("click",saveMult);
+$("#ctAdd").addEventListener("click",()=>openCtForm(null));
+$("#ctCancel").addEventListener("click",()=>{$("#ctForm").hidden=true;ctEdit=null});
+$("#ctForm").addEventListener("submit",saveCt);
+$("#contactBack").addEventListener("click",()=>{$("#ctForm").hidden=true;goBack("contact")});
+$("#vmM").addEventListener("click",()=>setVM("m",true));$("#vmP").addEventListener("click",()=>setVM("p",true));
+$("#netBtn").addEventListener("click",()=>{netDetail=!netDetail;$("#connState").textContent=netDetail?$("#netBtn").title:""});
+window.addEventListener("online",updateNet);window.addEventListener("offline",updateNet);
+setInterval(()=>{$("#f_time").value=nowHM()},10000);
+{const m=ls.get("pm_vm");setVM(m==="m"||m==="p"?m:(innerWidth<700?"m":"p"),false)}
+rebuild();renderStrip();selectTab(ls.get("pm_tab_"+(isPhone()?"m":"p"))||"dash");updateNet();
+
+(async()=>{
+  // CSV/PDF downloads: a normal browser download
+  downloads={save:async({filename,data})=>{const blob=data instanceof Blob?data:new Blob([data],{type:/\.csv$/i.test(filename)?"text/csv;charset=utf-8":"application/octet-stream"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000)}};
+  if(!window.supabase){$("#connState").textContent="Couldn't load the database library. Check the internet connection and reload.";$("#saveBtn").disabled=true;return}
+  sb.auth.onAuthStateChange((ev,session)=>{setTimeout(()=>onSession(session),0)});
+  const{data}=await sb.auth.getSession();onSession(data.session);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&SESSION)loadAll()});
+  setInterval(()=>{if(document.visibilityState==="visible"&&SESSION)loadAll()},120000);
+})();
+})();
+</script>
+
+</body>
+</html>
