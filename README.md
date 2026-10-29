@@ -64,7 +64,7 @@ Use the **publishable** (anon) key only. Never put the secret / `service_role` k
 
 1. Upload `index.html`, `README.md` and the `supabase` folder to this repository.
 2. **Settings → Pages:** Source **Deploy from a branch**, branch **main**, folder **/ (root)**, **Save**.
-3. After 1 to 2 minutes the log is live at `https://<your-github-name>.github.io/power-meter-log/`.
+3. After 1 to 2 minutes the log is live at `https://ngaukk.github.io/Electrical-Panel-Power-Meter-Daily-Log/`.
 
 ## Signing in
 
